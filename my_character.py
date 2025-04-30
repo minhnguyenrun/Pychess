@@ -1,4 +1,6 @@
-﻿# Piece values for evaluation
+﻿from functools import partial
+
+# Piece values for evaluation
 PIECE_VALUES = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9, "k": 0}
 
 class Character:
@@ -10,20 +12,12 @@ class Character:
 
     def get_move(self):
         self.move = []
-        for di, dj in self.dir_set: 
-            self.func(di, dj)
-        if self.special_move is not None:
-            self.special_move()
+        self.func()
         return self.move
 
-    def get_kill_move(self):
-        self.move = []
-        if self.kill_func:
-            for di, dj in self.dir_set: 
-                self.kill_func(di, dj)
-        if self.kill_special_move is not None:
-            self.kill_special_move()
-        return self.move
+    def get_normal_move(self, func):
+        for di, dj in self.dir_set: 
+            func(di, dj)
 
     def check_valid(self, i, j):
         return i > -1 and j > -1 and i < 8 and j < 8
@@ -47,25 +41,6 @@ class Character:
         if self.check_valid(i, j) and (self.state.board[i][j] is None or self.state.board[i][j].player != self.player):
             self.move.append((i, j))
 
-
-    def kill_walk(self, di, dj):
-        i = self.i + di
-        j = self.j + dj
-        while self.check_valid(i, j):
-            cell = self.state.board[i][j]
-            if cell is not None:
-                if cell.player != self.player:
-                    self.move.append((i, j))
-                break
-            i += di
-            j += dj
-
-    def kill_jump(self, di, dj):
-        i = self.i + di
-        j = self.j + dj
-        if self.check_valid(i, j) and self.state.board[i][j] is not None and self.state.board[i][j].player != self.player:
-            self.move.append((i, j))
-
     def make_a_move(self, i, j):
         self.i = i
         self.j = j
@@ -74,19 +49,14 @@ class Queen(Character):
     def __init__(self, state, name, i, j):
         super().__init__(state, name, i, j)
         self.dir_set = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))
-        self.func = self.walk
+        self.func = partial(self.get_normal_move, func = self.walk)
         self.special_move = None
-        self.kill_func = self.kill_walk
-        self.kill_special_move = None
 
 class Pawn(Character):
     def __init__(self, state, name, i, j):
         super().__init__(state, name, i, j)
         self.dir_set = []
-        self.func = None
-        self.special_move = self.my_special_move
-        self.kill_func = None
-        self.kill_special_move = None
+        self.func = self.my_special_move
         self.level = 1
         self.queen_dir_set = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))
         self.queen_func = self.walk
@@ -119,37 +89,23 @@ class King(Character):
     def __init__(self, state, name, i, j):
         super().__init__(state, name, i, j)
         self.dir_set = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))
-        self.func = self.jump
-        self.special_move = self.my_special_move
-        self.kill_func = self.kill_jump
-        self.kill_special_move = None
-
-    def my_special_move(self):
-        pass
+        self.func = partial(self.get_normal_move, func = self.jump)
+        self.special_move = None
 
 class Rook(Character):
     def __init__(self, state, name, i, j):
         super().__init__(state, name, i, j)
         self.dir_set = ((1, 0), (-1, 0), (0, 1), (0, -1))
-        self.func = self.walk
-        self.special_move = None
-        self.kill_func = self.kill_walk
-        self.kill_special_move = None
+        self.func = partial(self.get_normal_move, func = self.walk)
 
 class Bishop(Character):
     def __init__(self, state, name, i, j):
         super().__init__(state, name, i, j)
         self.dir_set = ((1, 1), (1, -1), (-1, 1), (-1, -1))
-        self.func = self.walk
-        self.special_move = None
-        self.kill_func = self.kill_walk
-        self.kill_special_move = None
+        self.func = partial(self.get_normal_move, func = self.walk)
 
 class Knight(Character):
     def __init__(self, state, name, i, j):
         super().__init__(state, name, i, j)
         self.dir_set = ((2, 1), (-2, 1), (2, -1), (-2, -1), (1, 2), (-1, 2), (1, -2), (-1, -2))
-        self.func = self.jump
-        self.special_move = None
-        self.kill_func = self.kill_jump
-        self.kill_special_move = None
+        self.func = partial(self.get_normal_move, func = self.jump)

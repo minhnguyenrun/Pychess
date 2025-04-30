@@ -90,7 +90,6 @@ class ChessAI:
 
     def generate_state(self, ai):
         move = []
-        b = 0
         for r in range(8):
             for c in range(8):
                 if self.game.board[r][c] is not None and self.game.board[r][c].player == ai:
@@ -104,15 +103,10 @@ class ChessAI:
             return self.game.deep_evaluate(ai) - bonus * ai, []
         i1, j1, i2, j2 = 0, 0, 0, 0
         move = self.generate_state(ai)
-        #if (depth == 0):
-            #for r, c, i, j in move:
-                #print(self.game.board[r][c].value, ":", i, j)
         random.shuffle(move)
-        best_path = []
         for r, c, i, j in move:
             if self.game.board[i][j] is not None and self.game.board[i][j].value == 0:
                 result = ai * 10000
-                path = []
             else:
                 self.game.goto(r, c, i, j)
                 if depth == 0:
@@ -121,25 +115,23 @@ class ChessAI:
                         if self.game.board[a][b] is not None and self.game.board[a][b].value == 0: 
                             ok = True
                     if ok:
-                        result, path = self.alphabeta(depth + 1, -beta, -alpha, 0.5)
+                        result, _ = self.alphabeta(depth + 1, -beta, -alpha, 0.5)
                     else:
-                        result, path = self.alphabeta(depth + 1, -beta, -alpha)
-                else: result, path = self.alphabeta(depth + 1, -beta, -alpha, bonus)
+                        result, _ = self.alphabeta(depth + 1, -beta, -alpha)
+                else: result, _ = self.alphabeta(depth + 1, -beta, -alpha, bonus)
                 result = -result
                 self.game.backto()
             if result > alpha:
                 alpha = result
                 i1, j1, i2, j2 = r, c, i ,j
-                best_path = path
             if alpha >= beta:
-                return alpha, [(i1, j1, i2, j2)] +  best_path
-        return alpha, [(i1, j1, i2, j2)] + best_path
+                return alpha, (i1, j1, i2, j2)
+        return alpha, (i1, j1, i2, j2)
         
 
     def get_best_move(self):
         best_value, best_move = self.alphabeta(0)
-        #print(best_value,":", best_move)
-        i1, j1, i2, j2 = best_move[0]
+        i1, j1, i2, j2 = best_move
         for m in self.game.game_adaptee.get_valid_moves():
             if i1 == m.start_row and i2 == m.end_row and j1 == m.start_col and j2 == m.end_col:
                 return m

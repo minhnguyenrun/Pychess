@@ -90,6 +90,7 @@ class ChessVisualizer:
         black_moves = [m.get_notation() for m in game.move_log if m.piece_moved[0] == 'b']
         self.screen.blit(self.font.render("Move History", True, (0, 0, 0)), (self.BOARD_WIDTH + 10, 10))
         max_moves_display = 10  # Limit visible moves to avoid overlap
+        self.move_scroll_offset = len(white_moves) - 10 if len(white_moves) - 10 > 0 else 0
         for i in range(max_moves_display):
             idx = i + self.move_scroll_offset
             if idx < len(white_moves):
@@ -125,15 +126,14 @@ class ChessVisualizer:
         pygame.display.flip()
         return buttons
     
-    def draw_color_menu(self):
+    def draw_option_menu(self):
         self.screen.fill((240, 240, 240))
-        options = ["Play as White", "Play as Black"]
+        options = ["Easy", "Medium", "Hard"]
         buttons = []
-        colors = [(255, 255, 255), (50, 50, 50)]
         for i, option in enumerate(options):
             text = self.font.render(option, True, (0, 0, 0))
-            rect = pygame.Rect(self.WIDTH // 2 - 150, 300 + i * 100, 300, 80)
-            pygame.draw.rect(self.screen, colors[i], rect)
+            rect = pygame.Rect(self.WIDTH // 2 - 150, 200 + i * 100, 300, 80)
+            pygame.draw.rect(self.screen, self.button_colors[i], rect)
             text_rect = text.get_rect(center=rect.center)
             self.screen.blit(text, text_rect)
             buttons.append(rect)
