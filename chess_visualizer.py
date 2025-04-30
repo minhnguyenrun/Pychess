@@ -36,7 +36,7 @@ class ChessVisualizer:
         self.highlight_color = (255, 255, 0, 100)
         self.check_color = (255, 0, 0)
         self.panel_bg_color = (220, 220, 220)  # Light grey for panel
-        self.button_colors = [(100, 200, 100), (200, 100, 100), (100, 100, 200)]  # Green, Red, Blue
+        self.button_colors = [(100, 200, 100), (200, 100, 100), (100, 100, 200), (255, 215, 0)]  # Green, Red, Blue
         self.font = pygame.font.SysFont("Arial", 24)
         self.small_piece_images = {k: pygame.transform.scale(v, (30, 30)) for k, v in self.piece_images.items()}
         self.move_scroll_offset = 0  # For scrolling move list
@@ -114,12 +114,27 @@ class ChessVisualizer:
     
     def draw_menu(self):
         self.screen.fill((240, 240, 240))
-        options = ["Player vs Player", "Player vs AI", "AI vs Random"]
+        options = ["Player vs Player", "Player vs AI", "AI vs Random", "Exit"]
         buttons = []
         for i, option in enumerate(options):
             text = self.font.render(option, True, (0, 0, 0))
-            rect = pygame.Rect(self.WIDTH // 2 - 150, 200 + i * 100, 300, 80)
+            rect = pygame.Rect(self.WIDTH // 2 - 150, 120 + i * 100, 300, 80)
             pygame.draw.rect(self.screen, self.button_colors[i], rect)
+            text_rect = text.get_rect(center=rect.center)
+            self.screen.blit(text, text_rect)
+            buttons.append(rect)
+        pygame.display.flip()
+        return buttons
+
+    def draw_color_menu(self):
+        self.screen.fill((240, 240, 240))
+        options = ["White", "Black"]
+        buttons = []
+        my_button_colors = [(224, 224, 244), (64, 64, 64)]
+        for i, option in enumerate(options):
+            text = self.font.render(option, True, (0, 0, 0))
+            rect = pygame.Rect(self.WIDTH // 2 - 150, 200 + i * 100, 300, 80)
+            pygame.draw.rect(self.screen, my_button_colors[i], rect)
             text_rect = text.get_rect(center=rect.center)
             self.screen.blit(text, text_rect)
             buttons.append(rect)

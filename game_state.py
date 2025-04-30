@@ -18,8 +18,8 @@ class GameState:
         self.white_to_move = True
         self.player_wants_black = player_wants_black
         self.move_log = []
-        self.white_king_location = (7, 4) if not player_wants_black else (0, 4)
-        self.black_king_location = (0, 4) if not player_wants_black else (7, 4)
+        self.white_king_location = (7, 4) #if not player_wants_black else (0, 4)
+        self.black_king_location = (0, 4) #if not player_wants_black else (7, 4)
         self.in_check = False
         self.pins = []
         self.checks = []

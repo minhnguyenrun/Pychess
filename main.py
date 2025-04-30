@@ -81,9 +81,9 @@ def play_game(mode, ai_depth, visualizer, player_wants_black=False):
             if mode == "player_vs_player":
                 continue
             elif mode == "player_vs_ai" and game.white_to_move != (not game.player_wants_black):
-                move = ChessAI(MinimaxGameState(game), ai_depth).get_best_move()
+                move = ChessAI(MinimaxGameState(game), ai_depth, 'w' if game.player_wants_black else 'b').get_best_move()
             elif mode == "ai_vs_random":
-                move = ChessAI(MinimaxGameState(game), ai_depth).get_best_move() if not game.white_to_move else random_move(game)
+                move = ChessAI(MinimaxGameState(game), ai_depth, 'w' if game.player_wants_black else 'b').get_best_move() if game.white_to_move != (not game.player_wants_black) else random_move(game)
             else:
                 continue
 
@@ -117,41 +117,19 @@ def play_game(mode, ai_depth, visualizer, player_wants_black=False):
 
 def main():
     visualizer = ChessVisualizer()
-    mode = None
-    buttons = visualizer.draw_menu()
+    while True:
+        mode = None
+        buttons = visualizer.draw_menu()
 
-    # Mode selection with hover
-    while mode is None:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                visualizer.close()
-                return
-            if event.type == pygame.MOUSEMOTION:
-                x, y = event.pos
-                for button in buttons:
-                    if button.collidepoint(x, y):
-                        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
-                        break
-                else:
-                    pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                x, y = event.pos
-                for i, button in enumerate(buttons):
-                    if button.collidepoint(x, y):
-                        mode = ["player_vs_player", "player_vs_ai", "ai_vs_random"][i]
-                        break
-
-    if mode != "player_vs_player":
-        ai_depth = None
-        color_buttons = visualizer.draw_option_menu()
-        while ai_depth is None:
+        # Mode selection with hover
+        while mode is None:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     visualizer.close()
                     return
                 if event.type == pygame.MOUSEMOTION:
                     x, y = event.pos
-                    for button in color_buttons:
+                    for button in buttons:
                         if button.collidepoint(x, y):
                             pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
                             break
@@ -159,16 +137,66 @@ def main():
                         pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     x, y = event.pos
-                    if color_buttons[0].collidepoint(x, y):
-                        ai_depth = 2
-                    elif color_buttons[1].collidepoint(x, y):
-                        ai_depth = 3
-                    else:
-                        ai_depth = 4
+                    for i, button in enumerate(buttons):
+                        if button.collidepoint(x, y):
+                            mode = ["player_vs_player", "player_vs_ai", "ai_vs_random", "exit"][i]
+                            break
 
-    #ai_depth = 4 if "ai" in mode else None
-    result = play_game(mode, ai_depth, visualizer, False)
-    print(f"Game result: {'White wins' if result == 'white' else 'Black wins' if result == 'black' else 'Draw'}")
+        if mode == "exit":
+            break
+
+        if mode != "player_vs_player":
+            ai_depth = None
+            color_buttons = visualizer.draw_option_menu()
+            while ai_depth is None:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        visualizer.close()
+                        return
+                    if event.type == pygame.MOUSEMOTION:
+                        x, y = event.pos
+                        for button in color_buttons:
+                            if button.collidepoint(x, y):
+                                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+                                break
+                        else:
+                            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+                    if event.type == pygame.MOUSEBUTTONDOWN:
+                        x, y = event.pos
+                        if color_buttons[0].collidepoint(x, y):
+                            ai_depth = 2
+                        elif color_buttons[1].collidepoint(x, y):
+                            ai_depth = 3
+                        else:
+                            ai_depth = 4
+            color = None
+            color_buttons = visualizer.draw_color_menu()
+            while color is None:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        visualizer.close()
+                        return
+                    if event.type == pygame.MOUSEMOTION:
+                        x, y = event.pos
+                        for button in color_buttons:
+                            if button.collidepoint(x, y):
+                                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+                                break
+                        else:
+                            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+                    if event.type == pygame.MOUSEBUTTONDOWN:
+                        x, y = event.pos
+                        if color_buttons[0].collidepoint(x, y):
+                            color = 'w'
+                        elif color_buttons[1].collidepoint(x, y):
+                            color = 'b'
+        else:
+            color = 'w'
+            ai_depth = None
+
+        #ai_depth = 4 if "ai" in mode else None
+        result = play_game(mode, ai_depth, visualizer, color == 'b')
+        print(f"Game result: {'White wins' if result == 'white' else 'Black wins' if result == 'black' else 'Draw'}")
     visualizer.close()
 
 

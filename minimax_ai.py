@@ -84,9 +84,11 @@ class MinimaxGameState:
         event.backto()
 
 class ChessAI:
-    def __init__(self, game, max_depth):
+    def __init__(self, game, max_depth, color = 'b'):
         self.max_depth = max_depth
         self.game = game
+        self.player = {'b': -1, 'w': 1}[color]
+        self.bonus = 0
 
     def generate_state(self, ai):
         move = []
@@ -97,16 +99,16 @@ class ChessAI:
                         move.append((r, c, i, j))
         return move
 
-    def alphabeta(self, depth, alpha = -1000000, beta = 1000000, bonus = 0):
-        ai = -1 if depth % 2 == 0 else 1
+    def alphabeta(self, depth, alpha = -1000000, beta = 1000000):
+        ai = self.player if depth % 2 == 0 else -self.player
         if depth == self.max_depth:
-            return self.game.deep_evaluate(ai) - bonus * ai, []
+            return self.game.deep_evaluate(ai) + self.bonus * (1 if depth % 2 == 0 else -1), []
         i1, j1, i2, j2 = 0, 0, 0, 0
         move = self.generate_state(ai)
         random.shuffle(move)
         for r, c, i, j in move:
             if self.game.board[i][j] is not None and self.game.board[i][j].value == 0:
-                result = ai * 10000
+                result = 10000
             else:
                 self.game.goto(r, c, i, j)
                 if depth == 0:
@@ -115,11 +117,13 @@ class ChessAI:
                         if self.game.board[a][b] is not None and self.game.board[a][b].value == 0: 
                             ok = True
                     if ok:
-                        result, _ = self.alphabeta(depth + 1, -beta, -alpha, 0.5)
-                    else:
-                        result, _ = self.alphabeta(depth + 1, -beta, -alpha)
-                else: result, _ = self.alphabeta(depth + 1, -beta, -alpha, bonus)
-                result = -result
+                        self.bonus = 0.5
+                    result, _ = self.alphabeta(depth + 1, -beta, -alpha)
+                    result = -result
+                    self.bonus = 0
+                else:
+                    result, _ = self.alphabeta(depth + 1, -beta, -alpha)
+                    result = -result
                 self.game.backto()
             if result > alpha:
                 alpha = result
