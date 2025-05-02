@@ -136,58 +136,99 @@ class GameState:
         moves = []
         self.in_check, self.pins, self.checks = self.check_for_pins_and_checks()
         king_row, king_col = self.white_king_location if self.white_to_move else self.black_king_location
-
-        #print(f"In check: {self.in_check}, Checks: {self.checks}")
-
+        if self.in_check:
+            print(f"DEBUG: King is in check, filtering {len(self.get_all_possible_moves())} initial moves")
         if self.in_check:
             if len(self.checks) == 1:
+                # One check - can block, capture, or move king
                 moves = self.get_all_possible_moves()
-                #print(f"Initial moves: {[move.get_notation() for move in moves]}")
                 check = self.checks[0]
                 check_row, check_col = check[0], check[1]
                 piece_checking = self.board[check_row][check_col]
-                # Correctly calculate valid squares to block or capture
-                valid_squares = []
-                if piece_checking[1] != 'n':  # Not a knight check
-                    dr, dc = check[2], check[3]
-                    # Compute squares between king and checking piece
-                    for i in range(1, 8):
-                        r, c = king_row + dr * i, king_col + dc * i
-                        if 0 <= r < 8 and 0 <= c < 8:
-                            if (r, c) == (check_row, check_col):
-                                break
-                            valid_squares.append((r, c))
-                valid_squares.append((check_row, check_col))  # Include the checking piece's square
-                #print(f"Valid squares: {valid_squares}")
-
-                # Filter moves: only keep moves that block/capture the checking piece or move the king
+    
+                # Prioritize capturing the threatening piece
+                capturing_moves = [m for m in moves if (m.end_row, m.end_col) == (check_row, check_col)]
+                other_moves = [m for m in moves if (m.end_row, m.end_col) != (check_row, check_col)]
+                moves = capturing_moves + other_moves
+    
+                # Filter moves that don't resolve the check
+                valid_squares = [(check_row, check_col)]  # Already includes the checking piece's position
+                if piece_checking[1] != 'n':  # If not a knight, calculate blocking squares
+                    dr = 1 if check_row > king_row else -1 if check_row < king_row else 0
+                    dc = 1 if check_col > king_col else -1 if check_col < king_col else 0
+                    r, c = king_row + dr, king_col + dc
+                    while (r, c) != (check_row, check_col):
+                        valid_squares.append((r, c))
+                        r, c = r + dr, c + dc
+                
+                # For debugging: Print all valid moves when in check (especially for knight checks)
+                if piece_checking[1] == 'n':
+                    print(f"Knight check at {check_row},{check_col} - valid squares: {valid_squares}")
+                    print(f"Capturing moves: {[(m.piece_moved, m.start_row, m.start_col, m.end_row, m.end_col) for m in capturing_moves]}")
+                
                 for i in range(len(moves) - 1, -1, -1):
                     if moves[i].piece_moved[1] != 'k' and (moves[i].end_row, moves[i].end_col) not in valid_squares:
                         moves.pop(i)
-                #print(f"After valid squares filter: {[move.get_notation() for move in moves]}")
-
+                    else:
+                        self.make_move(moves[i])
+                        self.white_to_move = not self.white_to_move
+                        in_check_after_move, _, _ = self.check_for_pins_and_checks()
+                        if in_check_after_move:
+                            moves.pop(i)
+                        self.white_to_move = not self.white_to_move
+                        self.undo_move()
             else:
-                # Double check: only king moves are possible
+                # Multiple checks - king must move
                 self.get_king_moves(king_row, king_col, moves)
-
-            # Simulate each remaining move to ensure it resolves the check
-            for i in range(len(moves) - 1, -1, -1):
-                move = moves[i]
-                self.make_move(move)
-                still_in_check, _, _ = self.check_for_pins_and_checks()
-                self.undo_move()
-                if still_in_check:
-                    moves.pop(i)
-                #print(f"After simulation filter: {[move.get_notation() for move in moves]}")
-
+    
+                # Filter moves that don't resolve the check
+                for i in range(len(moves) - 1, -1, -1):
+                    self.make_move(moves[i])
+                    self.white_to_move = not self.white_to_move
+                    in_check_after_move, _, _ = self.check_for_pins_and_checks()
+                    if in_check_after_move:
+                        moves.pop(i)
+                    self.white_to_move = not self.white_to_move
+                    self.undo_move()
         else:
             moves = self.get_all_possible_moves()
+    
+            # Prioritize moves that capture threatening pieces or escape threats
+            prioritized_moves = []
+            for move in moves:
+                self.make_move(move)
+                self.white_to_move = not self.white_to_move
+                in_check_after_move, _, _ = self.check_for_pins_and_checks()
+                if not in_check_after_move:
+                    if move.piece_captured != '--':  # Capturing a piece
+                        prioritized_moves.append((1, move))  # High priority for captures
+                    else:
+                        prioritized_moves.append((2, move))  # Lower priority for non-captures
+                self.white_to_move = not self.white_to_move
+                self.undo_move()
+    
+            # Sort moves by priority (captures first)
+            prioritized_moves.sort(key=lambda x: x[0])
+            moves = [m[1] for m in prioritized_moves]
+    
+        # Final check for checkmate or stalemate
+        if self.in_check:
+            if len(moves) == 0:
+                print(f"DEBUG: No moves found that resolve check - potential checkmate for {'White' if not self.white_to_move else 'Black'}")
+            else:
+                print(f"DEBUG: {len(moves)} moves found that resolve check")
+                for move in moves[:3]:  # Print first few moves only
+                    print(f"  - {move.piece_moved} from {move.start_row},{move.start_col} to {move.end_row},{move.end_col}")
 
-        if not moves:
-            self.checkmate = self.in_check
-            self.stalemate = not self.in_check or self.is_insufficient_material()
-        elif self.is_threefold_repetition():
-            self.stalemate = True
+      
+        if len(moves) == 0:
+            if self.in_check:
+                self.checkmate = True
+                print(f"CHECKMATE: {'Black' if self.white_to_move else 'White'} wins")
+            else:
+                self.stalemate = True
+                print("STALEMATE")
+    
         return moves
 
     def check_for_pins_and_checks(self):

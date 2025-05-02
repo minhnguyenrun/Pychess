@@ -7,10 +7,63 @@ from chess_visualizer import ChessVisualizer
 from minimax_ai import ChessAI, MinimaxGameState
 from game_state import GameState
 
+# def random_move(game):
+#     moves = game.get_valid_moves()
+#     return random.choice(moves) if moves else None
+
 def random_move(game):
     moves = game.get_valid_moves()
-    return random.choice(moves) if moves else None
+    
+    print("\n=== RANDOM AGENT MOVE SELECTION ===")
+    print_board(game.board)  # Using a separate print_board function
+    
+    if not moves:
+        print("No valid moves available!")
+        print("=== RANDOM AGENT MOVE SELECTION END ===\n")
+        return None
+        
+    # Log available capture moves
+    capture_moves = [m for m in moves if m.piece_captured != '--']
+    if capture_moves:
+        print(f"Available capture moves ({len(capture_moves)}):")
+        for m in capture_moves:
+            piece = m.piece_moved
+            target = m.piece_captured
+            print(f"- {piece} {chr(97+m.start_col)}{8-m.start_row}->{chr(97+m.end_col)}{8-m.end_row} captures {target}")
+    
+    # Make the random selection
+    selected_move = random.choice(moves)
+    
+    # Log the selected move
+    move_str = f"{selected_move.piece_moved} {chr(97+selected_move.start_col)}{8-selected_move.start_row}->{chr(97+selected_move.end_col)}{8-selected_move.end_row}"
+    if selected_move.piece_captured != '--':
+        move_str += f" captures {selected_move.piece_captured}"
+        
+    print(f"\nSelected random move: {move_str}")
+    print("=== RANDOM AGENT MOVE SELECTION END ===\n")
+    
+    return selected_move
 
+# Helper function to print the board
+def print_board(board):
+    """Print a text representation of the board for debugging"""
+    print("  a b c d e f g h")
+    print(" +-----------------+")
+    for r in range(8):
+        print(f"{8-r}|", end=" ")
+        for c in range(8):
+            piece = board[r][c]
+            if piece == '--':
+                print(".", end=" ")
+            else:
+                # For white pieces use uppercase, for black lowercase
+                char = piece[1]
+                if piece[0] == 'w':  # White
+                    char = char.upper()
+                print(char, end=" ")
+        print(f"|{8-r}")
+    print(" +-----------------+")
+    print("  a b c d e f g h")
 def play_game(mode, ai_depth, visualizer, player_wants_black=False):
     game = GameState(player_wants_black=player_wants_black)
     selected_piece = None
@@ -168,7 +221,7 @@ def main():
                         elif color_buttons[1].collidepoint(x, y):
                             ai_depth = 3
                         else:
-                            ai_depth = 4
+                            ai_depth = 10
             color = None
             color_buttons = visualizer.draw_color_menu()
             while color is None:

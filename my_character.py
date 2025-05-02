@@ -9,6 +9,7 @@ class Character:
         self.player = {'b': -1, 'w': 1}[name[0]]
         self.move = []
         self.value = self.value * self.player
+        self.name = name
 
     def get_move(self):
         self.move = []
