@@ -245,7 +245,7 @@ def main():
                         elif color_buttons[1].collidepoint(x, y):
                             ai_depth = 3
                         else:
-                            ai_depth = 10
+                            ai_depth = 5
             color = None
             color_buttons = visualizer.draw_color_menu()
             while color is None:

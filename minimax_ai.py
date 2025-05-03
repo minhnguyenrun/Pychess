@@ -123,7 +123,7 @@ class Event:
     def goto(self):
         self.state.board[self.i1][self.j1] = None
         self.state.board[self.i2][self.j2] = self.chess_man_1
-        if self.chess_man_1 is not None:  # Add this check to prevent NoneType error
+        if self.chess_man_1 is not None:  # Add null check
             self.chess_man_1.make_a_move(self.i2, self.j2)
             if self.special_event is not None:
                 self.chess_man_1.level = 2
@@ -131,11 +131,11 @@ class Event:
     def backto(self):
         self.state.board[self.i1][self.j1] = self.chess_man_1
         self.state.board[self.i2][self.j2] = self.chess_man_2
-        self.chess_man_1.make_a_move(self.i1, self.j1)
-        if self.special_event is not None:
-            self.chess_man_1.level = 1
-            self.chess_man_1.value = self.chess_man_1.value // 9
-
+        if self.chess_man_1 is not None:  # Add null check to prevent error
+            self.chess_man_1.make_a_move(self.i1, self.j1)
+            if self.special_event is not None:
+                self.chess_man_1.level = 1
+                self.chess_man_1.value = self.chess_man_1.value // 9
 class MinimaxGameState:
     def __init__(self, game_adaptee):
         self.board = []
@@ -361,96 +361,9 @@ class ChessAI:
         self.bonus = 0
         self.move_count = len(game.game_adaptee.move_log)
         self.transposition_table = {}
-
-    def generate_state(self, ai):
-        """Generate moves with MVA-LVA ordering and improved prioritization"""
-        moves = []  # Unused but kept for compatibility
-        captures = []
-        non_captures = []
-        defensive_moves = []  # New category for king safety moves
-        check_moves = []  # New category for moves that maintain check on opponent
-        
-        # First check if king is under threat
-        king_threatened = self.is_check(ai)
-        
-        # Find if opponent's king is in check (new)
-        opponent_king_in_check = self.is_check(-ai)
-        opponent_king_pos = None
-        
-        # Find king positions
-        king_pos = None
-        for r in range(8):
-            for c in range(8):
-                if (self.game.board[r][c] is not None and 
-                    self.game.board[r][c].name[1] == 'k'):
-                    if self.game.board[r][c].player == ai:
-                        king_pos = (r, c)
-                    else:
-                        opponent_king_pos = (r, c)
-                if king_pos and opponent_king_pos:
-                    break
-        
-        # Rest of existing code for queen_pos detection...
-        
-        # First, collect all possible moves
-        for r in range(8):
-            for c in range(8):
-                if self.game.board[r][c] is not None and self.game.board[r][c].player == ai:
-                    # Existing code for piece detection...
-                    
-                    for i, j in self.game.board[r][c].get_move():
-                        # Existing king defense logic...
-                        
-                        # NEW: Prioritize moves that maintain check against opponent's king
-                        if opponent_king_in_check:
-                            self.game.goto(r, c, i, j)
-                            still_in_check = self.is_check(-ai)
-                            piece_is_safe = True
-                            if still_in_check:
-                                piece_is_safe, _, _ = self.evaluate_move_safety(r, c, i, j)
-                            is_checkmate = still_in_check and self.is_opponent_checkmated(-ai)
-                            if is_checkmate:
-                                # Checkmate is always top priority
-                                check_moves.append((2000, r, c, i, j))
-                            elif still_in_check and piece_is_safe:
-                                # Only prioritize safe checks
-                                check_moves.append((950, r, c, i, j))
-                            elif still_in_check:
-                                # Unsafe checks get lower priority
-                                check_moves.append((400, r, c, i, j))
-                            self.game.backto()
-
-        
-        # Sort each category
-        check_moves.sort(reverse=True)  # New category
-        defensive_moves.sort(reverse=True)
-        captures.sort(reverse=True)
-        non_captures.sort(reverse=True)
-        
-        # Combine with check moves and defensive moves first (highest priority)
-        move_data = [m[1:] for m in check_moves] + [m[1:] for m in defensive_moves] + [m[1:] for m in captures] + [m[1:] for m in non_captures]
-        
-        # Use opening book for early moves if available
-        if self.move_count < 10:
-            position_hash = self.game.get_position_hash()
-            if position_hash in OPENING_BOOK:
-                book_moves = []
-                for book_from, book_to in OPENING_BOOK[position_hash]:
-                    # Check if the book move is valid
-                    for r, c, i, j in move_data:
-                        if (r, c) == book_from and (i, j) == book_to:
-                            book_moves.append((r, c, i, j))
-                if book_moves:
-                    # Return a book move with some randomness
-                    return [random.choice(book_moves)]
-            # If at start position, use general opening moves
-            elif self.move_count < 2 and "start" in OPENING_BOOK:
-                for book_from, book_to in OPENING_BOOK["start"]:
-                    for r, c, i, j in move_data:
-                        if (r, c) == book_from and (i, j) == book_to:
-                            return [(r, c, i, j)]
-                
-        return move_data
+        self.check_cache = {}  
+        self.king_positions = {} 
+    
     def is_opponent_checkmated(self, opponent):
         """Check if opponent has any legal moves to get out of check"""
         # Generate all possible moves for opponent
@@ -509,14 +422,22 @@ class ChessAI:
         # 1. We're capturing a higher value piece than our own
         # 2. Or we're capturing a piece with a piece that's less valuable than the smallest attacker
         return True, smallest_attacker_value
+        # Add this to your ChessAI class, around line 500-600 (near your minimax or alphabeta methods)
     
-    def quiescence_search(self, alpha, beta, depth=0, max_q_depth=6):
-        """Enhanced quiescence search that better evaluates tactical positions"""
+    @property
+    def board(self):
+        """Compatibility property to allow code to access board through self.board"""
+        if hasattr(self, 'game') and hasattr(self.game, 'board'):
+            return self.game.board
+        raise AttributeError("'ChessAI' object has no attribute 'board'")
+    
+    def quiescence_search(self, alpha, beta, depth=0, max_depth=6, include_checks=True):
+        """Enhanced quiescence search that doesn't miss captures"""
         # Get current static evaluation
-        standing_pat = self.game.evaluate(self.player if depth % 2 == 0 else -self.player)
+        standing_pat = self.evaluate_board()
         
         # Return position evaluation if we've reached max depth
-        if depth >= max_q_depth:  # Increased from 4 to 6 for better tactical vision
+        if depth >= max_depth:
             return standing_pat, []
         
         # Use standing pat if it exceeds beta (position already too good)
@@ -527,168 +448,31 @@ class ChessAI:
         if alpha < standing_pat:
             alpha = standing_pat
         
-        # Determine whose turn it is
-        ai = self.player if depth % 2 == 0 else -self.player
-        best_move = []
-        
-        # First check if king is in check - this is critical
-        king_in_check = self.is_check(ai)
-        
-        # If in check, we must consider ALL moves, not just captures
-        if king_in_check:
-            # Find king position
-            king_pos = None
-            for r in range(8):
-                for c in range(8):
-                    if (self.game.board[r][c] is not None and 
-                        self.game.board[r][c].name[1] == 'k' and 
-                        self.game.board[r][c].player == ai):
-                        king_pos = (r, c)
-                        break
-                if king_pos:
-                    break
-            
-            # Generate all moves to get out of check
-            all_moves = []
-            for r in range(8):
-                for c in range(8):
-                    if self.game.board[r][c] is not None and self.game.board[r][c].player == ai:
-                        for i, j in self.game.board[r][c].get_move():
-                            # Try the move
-                            self.game.goto(r, c, i, j)
-                            still_in_check = self.is_check(ai)
-                            # If this resolves the check, consider it
-                            if not still_in_check:
-                                # Score based on captured piece value
-                                score = 0
-                                if self.game.board[i][j] is not None:
-                                    score = abs(self.game.board[i][j].value)
-                                all_moves.append((score, r, c, i, j))
-                            self.game.backto()
-            
-            # Sort by captured piece value (higher first)
-            all_moves.sort(reverse=True)
-            
-            # Evaluate each check evasion
-            for _, r, c, i, j in all_moves:
-                self.game.goto(r, c, i, j)
-                score, move = self.quiescence_search(-beta, -alpha, depth + 1, max_q_depth)
-                score = -score
-                self.game.backto()
-                
-                if score > alpha:
-                    alpha = score
-                    best_move = [r, c, i, j]
-                    
-                if alpha >= beta:
-                    break
-                    
-            return alpha, best_move
-        
-        # Not in check - look for captures and checks
+        # Generate all potential capture moves
         captures = []
-        checks = []
-        
-        # Collect all possible captures
         for r in range(8):
             for c in range(8):
-                if self.game.board[r][c] is not None and self.game.board[r][c].player == ai:
-                    piece = self.game.board[r][c]
-                    
+                piece = self.game.board[r][c]
+                if piece is not None and ((depth % 2 == 0 and piece.player == self.player) or 
+                                         (depth % 2 == 1 and piece.player != self.player)):
                     for i, j in piece.get_move():
-                        # Check for captures
-                        if self.game.board[i][j] is not None and self.game.board[i][j].player == -ai:
-                            captured_value = abs(self.game.board[i][j].value)
-                            attacker_value = abs(piece.value)
+                        target = self.game.board[i][j]
+                        if target is not None and target.player != piece.player:
+                            # Evaluate if capture is safe
+                            is_safe, target_value, _ = self.evaluate_move_safety(r, c, i, j)
                             
-                            # SEE (Static Exchange Evaluation) logic
-                            # Only include captures that appear favorable or equal
-                            self.game.goto(r, c, i, j)
-                            
-                            # Check if piece is threatened after capture
-                            is_threatened = False
-                            smallest_attacker = float('inf')
-                            for ar in range(8):
-                                for ac in range(8):
-                                    if (self.game.board[ar][ac] is not None and 
-                                        self.game.board[ar][ac].player == -ai):
-                                        for ai, aj in self.game.board[ar][ac].get_move():
-                                            if (ai, aj) == (i, j):
-                                                is_threatened = True
-                                                value = abs(self.game.board[ar][ac].value)
-                                                smallest_attacker = min(smallest_attacker, value)
-                            
-                            self.game.backto()
-                            
-                            # Skip bad captures (unless capturing a higher value piece)
-                            if is_threatened and smallest_attacker < attacker_value and captured_value <= attacker_value:
-                                continue
-                            
-                            # Score by MVV-LVA (Most Valuable Victim - Least Valuable Attacker)
-                            score = captured_value * 100 - attacker_value
-                            captures.append((score, r, c, i, j))
-                        
-                        # Check for moves that give check
-                        elif depth <= 2:  # Only consider checks in first few plies
-                            self.game.goto(r, c, i, j)
-                            gives_check = self.is_check(-ai)
-                            
-                            # Only consider safe checks
-                            is_safe = True
-                            if gives_check:
-                                # Check if our piece would be captured
-                                for er in range(8):
-                                    for ec in range(8):
-                                        if (self.game.board[er][ec] is not None and 
-                                            self.game.board[er][ec].player == -ai):
-                                            for ei, ej in self.game.board[er][ec].get_move():
-                                                if (ei, ej) == (i, j):
-                                                    # See if enemy piece is protected
-                                                    enemy_protected = False
-                                                    for pr in range(8):
-                                                        for pc in range(8):
-                                                            if (self.game.board[pr][pc] is not None and 
-                                                                self.game.board[pr][pc].player == -ai and 
-                                                                (pr, pc) != (er, ec)):
-                                                                for pi, pj in self.game.board[pr][pc].get_move():
-                                                                    if (pi, pj) == (er, ec):
-                                                                        enemy_protected = True
-                                                                        break
-                                                        if enemy_protected:
-                                                            break
-                                                    
-                                                    if not enemy_protected or abs(piece.value) < abs(self.game.board[er][ec].value):
-                                                        is_safe = False
-                                                    break
-                                        if not is_safe:
-                                            break
-                                    if not is_safe:
-                                        break
-                            
-                            self.game.backto()
-                            
-                            if gives_check and is_safe:
-                                # Check bonus, but lower than captures
-                                checks.append((50, r, c, i, j))  # Lower priority than most captures
+                            if is_safe or target_value > abs(piece.value):
+                                # MVV-LVA ordering (Most Valuable Victim - Least Valuable Aggressor)
+                                score = abs(target.value) * 100 - abs(piece.value)
+                                captures.append((score, r, c, i, j))
         
-        # Special case: pawn promotions (very important to consider)
-        for r in range(8):
-            for c in range(8):
-                if self.game.board[r][c] is not None and self.game.board[r][c].player == ai and self.game.board[r][c].name[1] == 'p':
-                    # Check if pawn can promote
-                    promotion_rank = 0 if ai == 1 else 7  # Target rank for promotion
-                    for i, j in self.game.board[r][c].get_move():
-                        if i == promotion_rank:
-                            # Very high priority for promotions
-                            captures.append((900, r, c, i, j))  # Equivalent to queen value
+        # Sort captures by MVV-LVA score
+        captures.sort(reverse=True)
         
-        # Combine captures and checks, sorted by priority
-        moves = sorted(captures + checks, reverse=True)
-        
-        # Evaluate each capture and check
-        for _, r, c, i, j in moves:
+        best_move = []
+        for _, r, c, i, j in captures:
             self.game.goto(r, c, i, j)
-            score, move = self.quiescence_search(-beta, -alpha, depth + 1, max_q_depth)
+            score, _ = self.quiescence_search(-beta, -alpha, depth + 1, max_depth)
             score = -score
             self.game.backto()
             
@@ -700,104 +484,47 @@ class ChessAI:
                 break
         
         return alpha, best_move
-    def alphabeta(self, depth, alpha=-1000000, beta=1000000, iterative_deepening=True):
-        """Enhanced alpha-beta pruning with iterative deepening and transposition table"""
-        # Check transposition table
-        position_hash = self.game.get_position_hash()
-        if position_hash in self.transposition_table and self.transposition_table[position_hash][0] >= depth:
-            stored_depth, stored_value, stored_move = self.transposition_table[position_hash]
-            return stored_value, stored_move
-            
-        ai = self.player if depth % 2 == 0 else -self.player
-        
-        if depth == self.max_depth:
-            # Switch to quiescence search at max depth
-            alpha, best_move = self.quiescence_search(alpha, beta, depth=0, include_checks=True)
-            return alpha + self.bonus * (1 if depth % 2 == 0 else -1), best_move
-            
-        i1, j1, i2, j2 = 0, 0, 0, 0
-        move = self.generate_state(ai)
-        
-        # If no legal moves, might be checkmate or stalemate
-        if not move:
-            # Simple check for mate/stalemate - this is just a placeholder
-            return -10000 * ai if self.is_check(ai) else 0, []
-        
-        for r, c, i, j in move:
-            # Check for direct checkmate moves first
-            # if self.game.board[i][j] is not None and self.game.board[i][j].value == 0:
-            #     return 10000, (r, c, i, j)
-                
-            self.game.goto(r, c, i, j)
-            
-            # Increased bonus for checking the opponent's king
-            if depth == 0 and self.is_check(-ai):
-                self.bonus = 50
-                result, _ = self.alphabeta(depth + 1, -beta, -alpha)
-                result = -result
-                self.bonus = 0
-            # Track opportunities to promote pawns
-            elif depth == 0 and self.game.board[i][j].name[1] == 'p' and ((ai == 1 and i <= 1) or (ai == -1 and i >= 6)):
-                self.bonus = 100  # Bigger bonus for promotion opportunities
-                result, _ = self.alphabeta(depth + 1, -beta, -alpha)
-                result = -result
-                self.bonus = 0
-            # Regular move
-            else:
-                # Apply Late Move Reduction for non-capture moves at deeper levels
-                if depth > 2 and self.game.board[i][j] is None and (r, c, i, j) != move[0]:
-                    # Reduced depth search
-                    result, _ = self.alphabeta(depth + 1 + 1, -alpha-1, -alpha)  # +1 for reduction
-                    result = -result
-                    
-                    # If the reduced search indicates a good move, do a full search
-                    if result > alpha:
-                        result, _ = self.alphabeta(depth + 1, -beta, -alpha)
-                        result = -result
-                else:
-                    result, _ = self.alphabeta(depth + 1, -beta, -alpha)
-                    result = -result
-                    
-            self.game.backto()
-            
-            if result > alpha:
-                alpha = result
-                i1, j1, i2, j2 = r, c, i, j
-                
-            if alpha >= beta:
-                # Store position in transposition table
-                self.transposition_table[position_hash] = (depth, alpha, (i1, j1, i2, j2))
-                return alpha, (i1, j1, i2, j2)
-                
-        # Store position in transposition table
-        self.transposition_table[position_hash] = (depth, alpha, (i1, j1, i2, j2))
-        return alpha, (i1, j1, i2, j2)
+    
     
     def is_check(self, player):
-        """Determine if the player's king is in check"""
+        """Optimized check detection with caching"""
+        # Create a position key for this check state
+        check_key = f"{player}_check_{self.game.game_adaptee.get_position_key()}"
+        if check_key in self.check_cache:
+            return self.check_cache[check_key]
+            
         # Find king position
         king_pos = None
-        for r in range(8):
-            for c in range(8):
-                if (self.game.board[r][c] is not None and 
-                    self.game.board[r][c].name[1] == 'k' and 
-                    self.game.board[r][c].player == player):
-                    king_pos = (r, c)
+        king_key = f"king_{player}_{self.game.game_adaptee.get_position_key()}"
+        
+        if king_key in self.king_positions:
+            king_pos = self.king_positions[king_key]
+        else:
+            for r in range(8):
+                for c in range(8):
+                    if (self.game.board[r][c] is not None and 
+                        self.game.board[r][c].name[1] == 'k' and 
+                        self.game.board[r][c].player == player):
+                        king_pos = (r, c)
+                        self.king_positions[king_key] = king_pos
+                        break
+                if king_pos:
                     break
-            if king_pos:
-                break
                 
         if not king_pos:
-            return False  # No king found (shouldn't happen in a valid game)
+            return False
             
         # Check if any opponent's piece can attack the king
         for r in range(8):
             for c in range(8):
-                if (self.game.board[r][c] is not None and 
-                    self.game.board[r][c].player == -player):
-                    for i, j in self.game.board[r][c].get_move():
+                enemy = self.game.board[r][c]
+                if enemy is not None and enemy.player == -player:
+                    for i, j in enemy.get_move():
                         if (i, j) == king_pos:
+                            self.check_cache[check_key] = True
                             return True
+        
+        self.check_cache[check_key] = False
         return False
     
     def evaluate_threats(self):
@@ -835,83 +562,482 @@ class ChessAI:
             return True, threats[0][0]
         return False, 0
     
-        
-    # def iterative_deepening(self, max_time=5.0):
-    #     """Enhanced iterative deepening search with better time management"""
-    #     start_time = time.time()
-    #     best_move = None
-    #     best_score = float('-inf') if self.player == 1 else float('inf')
-    #     completed_depth = 0
-        
-    #     print(f"Starting iterative deepening with max time: {max_time} seconds")
-        
-    #     # Start from depth 1 and increase
-    #     for depth in range(1, self.max_depth + 1):
-    #         # Always complete at least depth 1 search
-    #         try:
-    #             score, move = self.alphabeta(0, -float('inf'), float('inf'), True)
-                
-    #             # Update if this is a better move
-    #             if ((self.player == 1 and score > best_score) or 
-    #                 (self.player == -1 and score < best_score)):
-    #                 best_score = score
-    #                 best_move = move
-    #                 completed_depth = depth
+    def evaluate_board_simple(self):
+        """Simplified evaluation for time-critical situations"""
+        score = 0
+        for r in range(8):
+            for c in range(8):
+                piece = self.game.board[r][c]
+                if piece is not None:
+                    score += piece.value * piece.player
                     
-    #                 print(f"Completed depth {depth} search. Score: {score}, Best move: {move}")
-                
-    #             # Check time - use 80% of available time instead of 50%
-    #             elapsed = time.time() - start_time
-    #             if elapsed > max_time * 0.8 and depth > 1:
-    #                 print(f"Time limit reached after depth {depth} search")
-    #                 break
-                    
-    #         except Exception as e:
-    #             print(f"Error during search at depth {depth}: {str(e)}")
-    #             break
+                    # Basic positional bonus
+                    if piece.player == 1:  # White
+                        if piece.name[1] == 'p':  # Pawn advancement
+                            score += (7 - r) * 5
+                        if r <= 3 and c >= 2 and c <= 5:  # Center control
+                            score += 10
+                    else:  # Black
+                        if piece.name[1] == 'p':  # Pawn advancement
+                            score += r * 5
+                        if r >= 4 and c >= 2 and c <= 5:  # Center control
+                            score -= 10
+                            
+        return score
+    def evaluate_board(self):
+        """Enhanced board evaluation with positional understanding"""
+        if hasattr(self, 'start_time') and (time.time() - self.start_time > 2.5):
+            # Use simplified evaluation if we're running out of time
+            return self.evaluate_board_simple()
+        # Material evaluation
         
-    #     print(f"Search completed. Best move found at depth {completed_depth}: {best_move}")
-    #     return best_move
+        material_score = 0
+        
+        # Piece activity and position
+        position_score = 0
+        
+        # King safety
+        king_safety = 0
+        
+        # Control of center
+        center_control = 0
+        
+        # Pawn structure
+        pawn_structure = 0
+        
+        # Piece mobility
+        mobility_score = 0
+        
+        # Development for opening
+        development_score = 0
+        
+        # Count material and identify positions
+        white_pieces = black_pieces = 0
+        white_king_pos = black_king_pos = None
+        white_pawns_by_file = [0] * 8
+        black_pawns_by_file = [0] * 8
+        is_endgame = self.game.is_endgame()
+        
+        for r in range(8):
+            for c in range(8):
+                piece = self.game.board[r][c]
+                if piece is None:
+                    continue
+                    
+                # Add material value
+                material_score += piece.value
+                
+                # Count pieces for endgame detection
+                if piece.player == 1:  # White
+                    white_pieces += 1
+                    if piece.name[1] == 'k':
+                        white_king_pos = (r, c)
+                    if piece.name[1] == 'p':
+                        white_pawns_by_file[c] += 1
+                else:  # Black
+                    black_pieces += 1
+                    if piece.name[1] == 'k':
+                        black_king_pos = (r, c)
+                    if piece.name[1] == 'p':
+                        black_pawns_by_file[c] += 1
+                
+                # Add position bonus based on piece type
+                if piece.name[1] == 'p':  # Pawn
+                    if piece.player == 1:  # White
+                        position_score += PAWN_TABLE[r][c] * 0.1
+                        # Passed pawn detection
+                        passed = True
+                        for check_r in range(r-1, -1, -1):
+                            if c > 0 and self.game.board[check_r][c-1] is not None and self.game.board[check_r][c-1].name[1] == 'p' and self.game.board[check_r][c-1].player != piece.player:
+                                passed = False
+                                break
+                            if self.game.board[check_r][c] is not None and self.game.board[check_r][c].name[1] == 'p':
+                                passed = False
+                                break
+                            if c < 7 and self.game.board[check_r][c+1] is not None and self.game.board[check_r][c+1].name[1] == 'p' and self.game.board[check_r][c+1].player != piece.player:
+                                passed = False
+                                break
+                        if passed:
+                            pawn_structure += (7 - r) * 10  # More advanced = better
+                    else:  # Black
+                        position_score += PAWN_TABLE[7-r][c] * -0.1
+                        # Passed pawn check for black
+                        passed = True
+                        for check_r in range(r+1, 8):
+                            if c > 0 and self.game.board[check_r][c-1] is not None and self.game.board[check_r][c-1].name[1] == 'p' and self.game.board[check_r][c-1].player != piece.player:
+                                passed = False
+                                break
+                            if self.game.board[check_r][c] is not None and self.game.board[check_r][c].name[1] == 'p':
+                                passed = False
+                                break
+                            if c < 7 and self.game.board[check_r][c+1] is not None and self.game.board[check_r][c+1].name[1] == 'p' and self.game.board[check_r][c+1].player != piece.player:
+                                passed = False
+                                break
+                        if passed:
+                            pawn_structure -= r * 10
+                            
+                elif piece.name[1] == 'n':  # Knight
+                    if piece.player == 1:
+                        position_score += KNIGHT_TABLE[r][c] * 0.1
+                        # Knights are better in closed positions
+                        if not is_endgame:
+                            position_score += 5
+                    else:
+                        position_score += KNIGHT_TABLE[7-r][c] * -0.1
+                        if not is_endgame:
+                            position_score -= 5
+                        
+                elif piece.name[1] == 'b':  # Bishop
+                    if piece.player == 1:
+                        position_score += BISHOP_TABLE[r][c] * 0.1
+                        # Bishop pair bonus
+                        has_pair = False
+                        for r2 in range(8):
+                            for c2 in range(8):
+                                if r != r2 and c != c2 and self.game.board[r2][c2] is not None and \
+                                   self.game.board[r2][c2].name[1] == 'b' and self.game.board[r2][c2].player == piece.player:
+                                    has_pair = True
+                                    break
+                            if has_pair:
+                                break
+                        if has_pair:
+                            position_score += 30
+                    else:
+                        position_score += BISHOP_TABLE[7-r][c] * -0.1
+                        # Bishop pair bonus for black
+                        has_pair = False
+                        for r2 in range(8):
+                            for c2 in range(8):
+                                if r != r2 and c != c2 and self.game.board[r2][c2] is not None and \
+                                   self.game.board[r2][c2].name[1] == 'b' and self.game.board[r2][c2].player == piece.player:
+                                    has_pair = True
+                                    break
+                            if has_pair:
+                                break
+                        if has_pair:
+                            position_score -= 30
+                        
+                elif piece.name[1] == 'r':  # Rook
+                    if piece.player == 1:
+                        position_score += ROOK_TABLE[r][c] * 0.1
+                        # Rook on open file bonus
+                        open_file = True
+                        for check_r in range(8):
+                            if self.game.board[check_r][c] is not None and self.game.board[check_r][c].name[1] == 'p':
+                                open_file = False
+                                break
+                        if open_file:
+                            position_score += 15
+                        
+                        # Rook on 7th rank (7th for white, 2nd for black)
+                        if r == 1:  # 7th rank for white
+                            position_score += 20
+                    else:
+                        position_score += ROOK_TABLE[7-r][c] * -0.1
+                        # Rook on open file bonus for black
+                        open_file = True
+                        for check_r in range(8):
+                            if self.game.board[check_r][c] is not None and self.game.board[check_r][c].name[1] == 'p':
+                                open_file = False
+                                break
+                        if open_file:
+                            position_score -= 15
+                        
+                        # Rook on 2nd rank (7th for black)
+                        if r == 6:  # 2nd rank for black
+                            position_score -= 20
+                        
+                elif piece.name[1] == 'q':  # Queen
+                    if piece.player == 1:
+                        position_score += QUEEN_TABLE[r][c] * 0.1
+                    else:
+                        position_score += QUEEN_TABLE[7-r][c] * -0.1
+                        
+                elif piece.name[1] == 'k':  # King
+                    # King positional value - different for middle game and endgame
+                    if is_endgame:
+                        if piece.player == 1:
+                            position_score += KING_END_TABLE[r][c] * 0.1
+                        else:
+                            position_score += KING_END_TABLE[7-r][c] * -0.1
+                    else:
+                        if piece.player == 1:
+                            position_score += KING_MIDDLE_TABLE[r][c] * 0.1
+                        else:
+                            position_score += KING_MIDDLE_TABLE[7-r][c] * -0.1
+                            
+                    # King safety (pawn shield in midgame)
+                    if not is_endgame:
+                        if piece.player == 1:  # White
+                            if r < 7:
+                                for offset in [-1, 0, 1]:
+                                    if 0 <= c+offset < 8 and self.game.board[r+1][c+offset] is not None and \
+                                       self.game.board[r+1][c+offset].name[1] == 'p' and self.game.board[r+1][c+offset].player == 1:
+                                        king_safety += 15
+                        else:  # Black
+                            if r > 0:
+                                for offset in [-1, 0, 1]:
+                                    if 0 <= c+offset < 8 and self.game.board[r-1][c+offset] is not None and \
+                                       self.game.board[r-1][c+offset].name[1] == 'p' and self.game.board[r-1][c+offset].player == -1:
+                                        king_safety -= 15
+                
+                # Mobility (approximated by move count)
+                move_count = len(list(piece.get_move()))
+                mobility_score += move_count * piece.player * 2
+                
+                # Center control
+                if (r, c) in [(3, 3), (3, 4), (4, 3), (4, 4)]:
+                    center_control += piece.player * 10  # Direct center control
+                elif (r, c) in [(2, 2), (2, 3), (2, 4), (2, 5), (3, 2), (3, 5), (4, 2), (4, 5), (5, 2), (5, 3), (5, 4), (5, 5)]:
+                    center_control += piece.player * 5   # Extended center control
+                    
+                # Development bonus for minor pieces in opening
+                if self.move_count < 10 and piece.name[1] in ['n', 'b']:
+                    if piece.player == 1 and r < 6:  # White piece moved from back rank
+                        development_score += 15
+                    elif piece.player == -1 and r > 1:  # Black piece moved from back rank
+                        development_score -= 15
+        
+        # Doubled/isolated pawn penalties
+        for c in range(8):
+            if white_pawns_by_file[c] > 1:
+                pawn_structure -= 10 * (white_pawns_by_file[c] - 1)  # Penalty for doubled pawns
+            if black_pawns_by_file[c] > 1:
+                pawn_structure += 10 * (black_pawns_by_file[c] - 1)  # Penalty for doubled pawns
+                
+            # Isolated pawns (no pawns on adjacent files)
+            if white_pawns_by_file[c] > 0:
+                is_isolated = True
+                if c > 0 and white_pawns_by_file[c-1] > 0:
+                    is_isolated = False
+                if c < 7 and white_pawns_by_file[c+1] > 0:
+                    is_isolated = False
+                if is_isolated:
+                    pawn_structure -= 15
+                    
+            if black_pawns_by_file[c] > 0:
+                is_isolated = True
+                if c > 0 and black_pawns_by_file[c-1] > 0:
+                    is_isolated = False
+                if c < 7 and black_pawns_by_file[c+1] > 0:
+                    is_isolated = False
+                if is_isolated:
+                    pawn_structure += 15
+        
+        # Additional king safety evaluation based on piece proximity
+        if white_king_pos and not is_endgame:
+            kr, kc = white_king_pos
+            # Penalty for each enemy piece near the king
+            for r_off in range(-2, 3):
+                for c_off in range(-2, 3):
+                    check_r, check_c = kr + r_off, kc + c_off
+                    if 0 <= check_r < 8 and 0 <= check_c < 8:
+                        piece = self.game.board[check_r][check_c]
+                        if piece and piece.player == -1:
+                            dist = max(abs(r_off), abs(c_off))
+                            if piece.name[1] == 'q' or piece.name[1] == 'r':
+                                king_safety -= (3 - dist) * 15
+                            elif piece.name[1] == 'n' or piece.name[1] == 'b':
+                                king_safety -= (3 - dist) * 10
+        
+        if black_king_pos and not is_endgame:
+            kr, kc = black_king_pos
+            # Similar logic for black king
+            for r_off in range(-2, 3):
+                for c_off in range(-2, 3):
+                    check_r, check_c = kr + r_off, kc + c_off
+                    if 0 <= check_r < 8 and 0 <= check_c < 8:
+                        piece = self.game.board[check_r][check_c]
+                        if piece and piece.player == 1:
+                            dist = max(abs(r_off), abs(c_off))
+                            if piece.name[1] == 'q' or piece.name[1] == 'r':
+                                king_safety += (3 - dist) * 15
+                            elif piece.name[1] == 'n' or piece.name[1] == 'b':
+                                king_safety += (3 - dist) * 10
+        
+        # Check for threats to our pieces
+        threat_score = self.evaluate_threats()
+        
+        # Combine all evaluation components with appropriate weights
+        final_score = (
+            material_score + 
+            position_score * 0.8 + 
+            pawn_structure * 0.7 + 
+            center_control * 1.0 + 
+            king_safety * 1.5 + 
+            mobility_score * 0.4 + 
+            threat_score * 2.5
+        )
+        
+        # Development bonus is only significant in opening
+        if self.move_count < 10:
+            final_score += development_score * 0.5
+        
+        # Add a small random component to break ties and avoid repeated positions
+        final_score += random.uniform(-0.1, 0.1)
+        
+        return final_score
+        
+
     def iterative_deepening(self, max_time=5.0):
         start_time = time.time()
-        best_move = None
-        best_score = float('-inf') if self.player == 1 else float('inf')
-        completed_depth = 0
+        best_score_so_far = float('-inf') if self.player == 1 else float('inf')
+        best_move_so_far = None
+        last_completed_depth = 0
         
         print(f"Starting iterative deepening with max time: {max_time} seconds")
         
-        # Start from depth 1 and increase
         for depth in range(1, self.max_depth + 1):
             try:
-                # Use a copy of the game state to avoid side effects
-                self.transposition_table = {}  # Reset table for new depth
-                
-                # Run search at current depth
-                score, move = self.alphabeta(depth, -float('inf'), float('inf'), True)
-                
-                # Log completion of depth search
+                # Pass the correct maximizing flag based on self.player
+                is_maximizing_player = (self.player == 1)
+                score, move = self.alphabeta(depth, -float('inf'), float('inf'), is_maximizing_player)
+        
+                # Debug output
                 print(f"Completed depth {depth} search. Score: {score}, Move: {move}")
-                
-                # Update if this is a better move
-                if ((self.player == 1 and score > best_score) or 
-                    (self.player == -1 and score < best_score)):
-                    best_score = score
-                    best_move = move
-                    completed_depth = depth
-                
-                # Check time - use 80% of available time instead of 50%
+        
+                # --- MODIFIED UPDATE LOGIC ---
+                # Store the move from the latest completed depth if it's valid
+                if move and len(move) == 4:  # Make sure move is a valid list with 4 elements
+                    best_move_so_far = move
+                    best_score_so_far = score
+                    last_completed_depth = depth
+                # --- END MODIFIED UPDATE LOGIC ---
+        
                 elapsed = time.time() - start_time
-                if elapsed > max_time * 0.8:
-                    print(f"Reached depth {depth} before time limit ({elapsed:.2f}s)")
+                # Check time *after* potentially updating best_move
+                if elapsed > max_time * 0.8 and depth > 0:
+                    print(f"Reached time limit after depth {depth}")
                     break
-                    
             except Exception as e:
                 print(f"Error during search at depth {depth}: {str(e)}")
-                traceback.print_exc()  # Add this to get full stack trace
+                traceback.print_exc()
                 break
         
-        print(f"Search completed. Best move found at depth {completed_depth}: {best_move}")
-        return best_move
+        # Use the best move found at the deepest successfully completed depth
+        print(f"Search completed. Best move found at depth {last_completed_depth}: {best_move_so_far}")
+        
+        # Make sure we're returning a valid move list
+        if best_move_so_far is None or len(best_move_so_far) != 4:
+            print("WARNING: No valid move found, will need to use fallback")
+            return []
+                
+        return best_move_so_far
+    
+    def generate_state(self, player_to_move):
+        """Generates prioritized and scored moves for the specified player."""
+        original_turn = self.game.game_adaptee.white_to_move
+        required_turn_is_white = (player_to_move == 1)
+        self.game.game_adaptee.white_to_move = required_turn_is_white
+        move_tuples = [] # Initialize outside the try block
+    
+        try:
+            valid_moves_objects = self.game.game_adaptee.get_valid_moves()
+    
+            if not valid_moves_objects:  # Add this check to handle empty moves list
+                return []  # Return empty list if no valid moves
+    
+            for move in valid_moves_objects:
+                # --- Simulate move to check for check ---
+                self.game.goto(move.start_row, move.start_col, move.end_row, move.end_col)
+                # Check if this move puts the *opponent* in check
+                gives_check = self.is_check(-player_to_move)
+                # Undo the move
+                self.game.backto()
+                # --- End simulation ---
+    
+                # --- Calculate score based on the check status and capture ---
+                # Use the 'gives_check' variable determined above
+                score = 100 if gives_check else (10 if move.piece_captured != '--' else 0)
+                move_tuples.append((score, move.start_row, move.start_col, move.end_row, move.end_col))
+    
+            # Sort by score (descending) - adapt as needed
+            if move_tuples:  # Add this check to ensure move_tuples isn't empty
+                move_tuples.sort(key=lambda x: x[0], reverse=True)
+    
+        finally:
+            # Restore the original turn state
+            self.game.game_adaptee.white_to_move = original_turn
+    
+        return move_tuples
+    
+    def alphabeta(self, depth, alpha=-float('inf'), beta=float('inf'), is_maximizing=True):
+        """Alpha-beta pruning search that works with your existing methods"""
+        if depth == 0:
+            return self.evaluate_board(), []
+    
+        moves = self.generate_state(self.player if is_maximizing else -self.player)
+        print(f"DEBUG alphabeta: Depth {depth}, Maximize: {is_maximizing}, Moves generated: {moves}")
+        
+        if not moves:
+            if self.is_check(self.player if is_maximizing else -self.player):
+                # Checkmate - worst possible outcome
+                return float('-inf') if is_maximizing else float('inf'), []
+            else:
+                # Stalemate - draw (0) when equal, bad when ahead, good when behind
+                material_balance = sum(p.value * p.player for r in range(8) for c in range(8) 
+                                    if (p := self.game.board[r][c]) is not None)
+                material_advantage = material_balance * (self.player if is_maximizing else -self.player)
+                
+                if material_advantage > 200:  # We're ahead - stalemate is bad (equivalent to losing)
+                    return float('-inf') if is_maximizing else float('inf'), []
+                elif material_advantage < -200:  # We're behind - stalemate is good (equivalent to winning)
+                    return float('inf') if is_maximizing else float('-inf'), []
+                else:  # Even position - stalemate is a draw
+                    return 0, []
+                
+        best_move = None
+    
+        if is_maximizing:
+            value = float('-inf')
+            for score, r, c, i, j in moves:
+                # Make the move
+                self.game.goto(r, c, i, j)
+                
+                # Evaluate resulting position
+                eval_score, _ = self.alphabeta(depth - 1, alpha, beta, False)
+                
+                # Unmake the move
+                self.game.backto()
+                
+                # Update best
+                if eval_score > value:
+                    value = eval_score
+                    best_move = [r, c, i, j]
+                        
+                alpha = max(alpha, value)
+                if beta <= alpha:
+                    break
+            
+            # Ensure we always return a list (empty if no move found)
+            if best_move is None:
+                best_move = []
+                
+            print(f"DEBUG alphabeta: Depth {depth}, Maximize: {is_maximizing}, Returning Score: {value}, Move: {best_move}")
+            return value, best_move
+        else:
+            value = float('inf')
+            best_move = None
+            for score_from_gen, r, c, i, j in moves:
+                self.game.goto(r, c, i, j)
+                eval_score, _ = self.alphabeta(depth-1, alpha, beta, True)
+                self.game.backto()
+    
+                if eval_score < value:
+                    value = eval_score
+                    best_move = [r, c, i, j]
+    
+                beta = min(beta, value)
+                if beta <= alpha:
+                    break
+                    
+            # Ensure we always return a list (empty if no move found)
+            if best_move is None:
+                best_move = []
+                
+            print(f"DEBUG alphabeta: Depth {depth}, Maximize: {is_maximizing}, Returning Score: {value}, Move: {best_move}")
+            return value, best_move
+        
     def _print_board(self):
         """Print a text representation of the board for debugging"""
         print("  a b c d e f g h")
@@ -1184,74 +1310,7 @@ class ChessAI:
         # Fallback to any legal queen move
         return q_r, q_c, q_r, q_c
 
-        
-    # def evaluate_move_safety(self, r, c, i, j):
-    #     """Enhanced evaluation of move safety with better exchange assessment"""
-    #     piece = self.game.board[r][c]
-    #     if piece is None:
-    #         return False, 0, 0  # Not safe, no value, no attackers
-    #     piece_value = self.get_piece_value(piece)
-    #     target = self.game.board[i][j]
-    #     target_value = self.get_piece_value(target) if target else 0
-        
-    #     # Execute the move
-    #     self.game.goto(r, c, i, j)
-        
-    #     # Find all attackers of the new position
-    #     attackers = []
-    #     defenders = []
-    #     for ar in range(8):
-    #         for ac in range(8):
-    #             if self.game.board[ar][ac] is not None:
-    #                 if self.game.board[ar][ac].player != piece.player:
-    #                     # Enemy piece
-    #                     for ai, aj in self.game.board[ar][ac].get_move():
-    #                         if (ai, aj) == (i, j):
-    #                             attacker_value = self.get_piece_value(self.game.board[ar][ac])
-    #                             attackers.append((attacker_value, ar, ac))
-    #                 else:
-    #                     # Friendly piece
-    #                     for ai, aj in self.game.board[ar][ac].get_move():
-    #                         if (ai, aj) == (i, j):
-    #                             defender_value = self.get_piece_value(self.game.board[ar][ac])
-    #                             defenders.append((defender_value, ar, ac))
-        
-    #     self.game.backto()
-        
-    #     # Sort by value (ascending)
-    #     attackers.sort()
-    #     defenders.sort()
-        
-    #     # Full exchange evaluation
-    #     if not attackers:
-    #         # No attackers, safe move
-    #         return True, target_value, 0
-        
-    #     # Simple static exchange evaluation (SEE)
-    #     attacker_idx = 0
-    #     defender_idx = 0
-    #     balance = target_value  # Initial gain from capturing a piece
-        
-    #     while attacker_idx < len(attackers) and balance >= 0:
-    #         # Enemy captures our piece
-    #         attacker_value = attackers[attacker_idx][0]
-    #         balance -= piece_value
-    #         attacker_idx += 1
-            
-    #         if defender_idx < len(defenders):
-    #             # We recapture
-    #             defender_value = defenders[defender_idx][0]
-    #             balance += attacker_value
-    #             defender_idx += 1
-                
-    #             if attacker_idx < len(attackers):
-    #                 # Enemy captures again
-    #                 attacker_value = attackers[attacker_idx][0]
-    #                 balance -= defender_value
-    #                 attacker_idx += 1
-        
-    #     is_safe = balance >= 0
-    #     return is_safe, target_value, balance
+
     def evaluate_move_safety(self, r, c, i, j):
         """Better evaluation of move safety with proper exchange assessment"""
         piece = self.game.board[r][c]
@@ -1367,8 +1426,7 @@ class ChessAI:
         
         # Fallback
         return valid_moves
-        # Add this method to the ChessAI class, right after the evaluate_move_safety method
-    
+        
     def get_piece_value(self, piece):
         """Get the absolute value of a chess piece"""
         if piece is None:
@@ -1521,7 +1579,7 @@ class ChessAI:
         # If king is not in check or no defensive moves found, use normal search
         if use_iterative_deepening:
             print("Using iterative deepening search")
-            best_move = self.iterative_deepening(5.0)  # 5 seconds max
+            best_move = self.iterative_deepening(3.0)  # 5 seconds max
         else:
             print("Using standard alpha-beta search")
             _, best_move = self.alphabeta(0)
@@ -1565,8 +1623,28 @@ class ChessAI:
                         # Test the move
                         self.game.goto(i1, j1, i2, j2)
                         
-                        # Check if this creates stalemate
+                        # First check direct stalemate
                         is_stalemate = self.check_for_stalemate(self.player)
+                        
+                        # Then do a deeper check - look at opponent's best response and our follow-up
+                        if not is_stalemate:
+                            # Get opponent's responses
+                            opponent_moves = []
+                            for r in range(8):
+                                for c in range(8):
+                                    piece = self.game.board[r][c]
+                                    if piece is not None and piece.player == -self.player:
+                                        for move_r, move_c in piece.get_move():
+                                            self.game.goto(r, c, move_r, move_c)
+                                            # Check if this leads to stalemate after our best response
+                                            deep_stalemate = self.check_for_stalemate(self.player)
+                                            self.game.backto()
+                                            if deep_stalemate:
+                                                opponent_moves.append((r, c, move_r, move_c))
+                            
+                            # If all opponent moves lead to stalemate, this is problematic
+                            if opponent_moves and len(opponent_moves) == len(list(self.generate_state(-self.player))):
+                                is_stalemate = True
                         self.game.backto()
                         
                         if is_stalemate:
@@ -1606,8 +1684,6 @@ class ChessAI:
         else:
             print("No move selected from search, using fallback")
             
-        # ADD ENDGAME STRATEGY HERE - right at this indentation level
-        # ENDGAME STRATEGY - CHECK FOR KING+MATERIAL vs LONE KING
         enemy_pieces = [self.game.board[r][c] for r in range(8) for c in range(8) 
                         if self.game.board[r][c] is not None and self.game.board[r][c].player == -self.player]
 
@@ -1717,39 +1793,7 @@ class ChessAI:
             # Avoid moves that lead to positions we've seen before
             repetition_threshold = 1  # Avoid positions we've seen even once before
             repetitive_moves = []
-            
-            # First check if we can deliver checkmate
-            checkmate_moves = []
-            check_moves = []
-            for move in valid_moves:
-                self.game.goto(move.start_row, move.start_col, move.end_row, move.end_col)
-                opponent_in_check = self.is_check(-self.player)
-                if opponent_in_check:
-                    is_checkmate = self.is_opponent_checkmated(-self.player)
-                    if is_checkmate:
-                        checkmate_moves.append(move)
-                    else:
-                        check_moves.append(move)
-                self.game.backto()
-            
-            # When finding check moves, filter out repetitive ones
-            if check_moves:
-                non_repetitive_check_moves = []
-                for move in check_moves:
-                    # Test the move
-                    self.game.goto(move.start_row, move.start_col, move.end_row, move.end_col)
-                    test_position = self.game.game_adaptee.get_position_key()
-                    self.game.backto()
-                    
-                    # If the resulting position isn't a repetition, keep it
-                    if recent_positions.count(test_position) <= repetition_threshold:
-                        non_repetitive_check_moves.append(move)
-                    else:
-                        repetitive_moves.append(move)
-                
-                # If we have non-repetitive checks, use those instead
-                if non_repetitive_check_moves:
-                    check_moves = non_repetitive_check_moves
+        
             checkmate_moves = []
             check_moves = []
             for move in valid_moves:
@@ -2047,40 +2091,108 @@ class ChessAI:
     
     def check_for_stalemate(self, player):
         """Check if a move would result in stalemate"""
-        # Find king position
+        # First check if any non-king piece can move legally
+        for r in range(8):
+            for c in range(8):
+                piece = self.game.board[r][c]
+                if (piece is not None and 
+                    piece.player == -player and 
+                    piece.name[1] != 'k'):
+                    # Get valid moves for this piece
+                    for i, j in piece.get_move():
+                        # Skip if target square has our own piece
+                        target = self.game.board[i][j]
+                        if target is not None and target.player == -player:
+                            continue
+                        
+                        # Test if move would leave king in check
+                        self.game.goto(r, c, i, j)
+                        still_in_check = self.is_check(-player)
+                        self.game.backto()
+                        
+                        if not still_in_check:
+                            return False  # Found a legal move, not stalemate
+        
+        # If we get here, no non-king piece can move legally
+        # Now we only need to check king moves
         king_pos = None
         for r in range(8):
             for c in range(8):
-                if (self.game.board[r][c] is not None and 
-                    self.game.board[r][c].name[1] == 'k' and 
-                    self.game.board[r][c].player == -player):
+                piece = self.game.board[r][c]
+                if (piece is not None and 
+                    piece.name[1] == 'k' and 
+                    piece.player == -player):
                     king_pos = (r, c)
                     break
             if king_pos:
                 break
         
         if not king_pos:
-            return False
+            return False  # No king found (shouldn't happen in a valid game)
         
         # Check if king has any legal moves
         kr, kc = king_pos
-        king_moves = []
         for dr, dc in [(1,0), (-1,0), (0,1), (0,-1), (1,1), (1,-1), (-1,1), (-1,-1)]:
             nr, nc = kr + dr, kc + dc
             if 0 <= nr < 8 and 0 <= nc < 8:
-                if self.game.board[nr][nc] is None or self.game.board[nr][nc].player == player:
-                    # Test if this move would be legal (not in check)
-                    self.game.goto(kr, kc, nr, nc)
-                    in_check = self.is_check(-player)
-                    self.game.backto()
+                # Skip if target square has our own piece
+                if self.game.board[nr][nc] is not None and self.game.board[nr][nc].player == -player:
+                    continue
                     
-                    if not in_check:
-                        king_moves.append((nr, nc))
+                # Test if this move would be legal (not in check)
+                self.game.goto(kr, kc, nr, nc)
+                in_check = self.is_check(-player)
+                self.game.backto()
+                
+                if not in_check:
+                    return False  # Found a legal king move, not stalemate
         
-        # King has no legal moves - now check if in check
+        # Check if king is currently in check
         in_check = self.is_check(-player)
         
         # If no legal moves and not in check, it's stalemate
-        return len(king_moves) == 0 and not in_check
-    
-    
+        return not in_check
+
+    def detect_threatened_pieces(self):
+        """Detect pieces under immediate threat"""
+        threatened = []
+        
+        for r in range(8):
+            for c in range(8):
+                piece = self.game.board[r][c]
+                if piece is not None and piece.player == self.player:
+                    # Look for enemy pieces attacking this piece
+                    attackers = []
+                    
+                    # Check all possible enemy attackers
+                    for ar in range(8):
+                        for ac in range(8):
+                            enemy = self.game.board[ar][ac]
+                            if enemy is not None and enemy.player != self.player:
+                                for ai, aj in enemy.get_move():
+                                    if (ai, aj) == (r, c):
+                                        attackers.append((ar, ac, enemy))
+                    
+                    # If this piece is attacked, check if it's defended
+                    if attackers:
+                        # Look for defenders
+                        defenders = []
+                        for dr in range(8):
+                            for dc in range(8):
+                                ally = self.game.board[dr][dc] 
+                                if ally is not None and ally.player == self.player and (dr != r or dc != c):
+                                    for di, dj in ally.get_move():
+                                        if (di, dj) == (r, c):
+                                            defenders.append((dr, dc, ally))
+                        
+                        # Evaluate if piece is adequately defended
+                        lowest_attacker_value = min([abs(a[2].value) for a in attackers])
+                        piece_value = abs(piece.value)
+                        
+                        # If valuable piece is attacked by lesser piece, it's threatened
+                        if piece_value > lowest_attacker_value or not defenders:
+                            threatened.append((r, c, piece, attackers, defenders))
+        
+        # Sort by piece value (highest first)
+        threatened.sort(key=lambda x: abs(x[2].value), reverse=True)
+        return threatened
