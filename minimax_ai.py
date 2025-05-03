@@ -458,11 +458,12 @@ class ChessAI:
                             return False  # Found at least one legal move
         return True  # No legal moves found
 
-    def quiescence_search(self, alpha, beta, depth=0):
-        """Quiescence search to evaluate tactical positions"""
+    def quiescence_search(self, alpha, beta, depth=0, include_checks=False):
+        """Improved quiescence search to evaluate tactical positions"""
+        # Get current static evaluation
         standing_pat = self.game.evaluate(self.player if depth % 2 == 0 else -self.player)
         
-        if depth >= 4:  # Limit quiescence depth
+        if depth >= 4:  # Reasonable depth limit
             return standing_pat, []
             
         if standing_pat >= beta:
@@ -471,38 +472,50 @@ class ChessAI:
         if alpha < standing_pat:
             alpha = standing_pat
             
-        # Only consider captures for quiescence search
-        captures = []
+        # Consider captures and checks
         ai = self.player if depth % 2 == 0 else -self.player
+        captures = []
         
+        # Collect all possible captures
         for r in range(8):
             for c in range(8):
                 if self.game.board[r][c] is not None and self.game.board[r][c].player == ai:
                     for i, j in self.game.board[r][c].get_move():
-                        if self.game.board[i][j] is not None:  # Only captures
-                            victim_value = abs(self.game.board[i][j].value)
+                        # Only consider captures (not quiet moves)
+                        if self.game.board[i][j] is not None and self.game.board[i][j].player == -ai:
+                            captured_value = abs(self.game.board[i][j].value)
                             attacker_value = abs(self.game.board[r][c].value)
-                            score = victim_value - (attacker_value / 10.0)
+                            # Sort by MVV-LVA: Most Valuable Victim, Least Valuable Attacker
+                            score = captured_value * 100 - attacker_value
                             captures.append((score, r, c, i, j))
-                            
-        # Sort captures by MVA-LVA
+        
+        # Sort by MVV-LVA for better move ordering
         captures.sort(reverse=True)
         
-        i1, j1, i2, j2 = 0, 0, 0, 0
+        # Evaluate each capture
         for _, r, c, i, j in captures:
+            # Check if the move doesn't lose material
             self.game.goto(r, c, i, j)
-            score, _ = self.quiescence_search(-beta, -alpha, depth + 1)
-            score = -score
-            self.game.backto()
             
-            if score > alpha:
-                alpha = score
-                i1, j1, i2, j2 = r, c, i, j
+            # See if our piece would be recaptured
+            is_threatened = self.is_piece_threatened(i, j, self.game.board[i][j])
+            
+            if not is_threatened[0] or abs(self.game.board[i][j].value) >= is_threatened[1]:
+                # Only recurse if this isn't a losing capture
+                score, _ = self.quiescence_search(-beta, -alpha, depth + 1)
+                score = -score
                 
-            if alpha >= beta:
-                break
+                self.game.backto()
                 
-        return alpha, (i1, j1, i2, j2)
+                if score > alpha:
+                    alpha = score
+                    
+                if alpha >= beta:
+                    break
+            else:
+                self.game.backto()
+        
+        return alpha, []
 
     def alphabeta(self, depth, alpha=-1000000, beta=1000000, iterative_deepening=True):
         """Enhanced alpha-beta pruning with iterative deepening and transposition table"""
@@ -516,7 +529,7 @@ class ChessAI:
         
         if depth == self.max_depth:
             # Switch to quiescence search at max depth
-            alpha, best_move = self.quiescence_search(alpha, beta)
+            alpha, best_move = self.quiescence_search(alpha, beta, depth=0, include_checks=True)
             return alpha + self.bonus * (1 if depth % 2 == 0 else -1), best_move
             
         i1, j1, i2, j2 = 0, 0, 0, 0
@@ -604,20 +617,29 @@ class ChessAI:
                             return True
         return False
     
+       
     def is_piece_threatened(self, r, c, piece):
-        """Check if a piece is under threat from opponent pieces"""
+        """Enhanced check if a piece is under threat from opponent pieces"""
         piece_player = piece.player
+        threats = []
+        
         for i in range(8):
             for j in range(8):
                 if (self.game.board[i][j] is not None and 
                     self.game.board[i][j].player == -piece_player):
                     for move_i, move_j in self.game.board[i][j].get_move():
                         if move_i == r and move_j == c:
-                            # Check if attacker is less valuable than target
+                            # Calculate attack score: attacker value vs target value
                             attacker_value = abs(self.game.board[i][j].value)
                             target_value = abs(piece.value)
-                            if attacker_value < target_value:
-                                return True, attacker_value
+                            # Consider a piece threatened if attacked by equal or HIGHER value
+                            if attacker_value >= target_value:
+                                threats.append((attacker_value, i, j))
+        
+        # Return True if threatened, along with the highest value attacker
+        if threats:
+            threats.sort(reverse=True)  # Sort by attacker value (descending)
+            return True, threats[0][0]
         return False, 0
     
     def iterative_deepening(self, max_time=5.0):
@@ -662,6 +684,206 @@ class ChessAI:
         print(" +-----------------+")
         print("  a b c d e f g h")
 
+    def specialized_kq_endgame(self, board):
+        """
+        Specialized algorithm for King+Queen vs King endgame.
+        Returns the best move for this specific endgame.
+        """
+        # Find positions of all pieces
+        ai_king_pos = None
+        ai_queen_pos = None
+        enemy_king_pos = None
+        
+        for r in range(8):
+            for c in range(8):
+                piece = board[r][c]
+                if piece is not None:
+                    if piece.name[1] == 'k':
+                        if piece.player == self.player:
+                            ai_king_pos = (r, c)
+                        else:
+                            enemy_king_pos = (r, c)
+                    elif piece.name[1] == 'q' and piece.player == self.player:
+                        ai_queen_pos = (r, c)
+        
+        if not all([ai_king_pos, ai_queen_pos, enemy_king_pos]):
+            # Not a K+Q vs K scenario
+            return None
+        
+        # Calculate distances
+        ek_r, ek_c = enemy_king_pos
+        ak_r, ak_c = ai_king_pos
+        q_r, q_c = ai_queen_pos
+        
+        # Distance from enemy king to edges
+        edge_dist = min(ek_r, ek_c, 7-ek_r, 7-ek_c)
+        
+        # Distance between kings
+        king_dist = max(abs(ek_r - ak_r), abs(ek_c - ak_c))
+        
+        # Possible queen moves
+        queen = board[q_r][q_c]
+        queen_moves = []
+        for i, j in queen.get_move():
+            # Check if the move gives check
+            gives_check = False
+            for di, dj in [(0,1), (1,0), (0,-1), (-1,0), (1,1), (1,-1), (-1,1), (-1,-1)]:
+                r, c = i + di, j + dj
+                if 0 <= r < 8 and 0 <= c < 8 and (r, c) == enemy_king_pos:
+                    gives_check = True
+                    break
+                    
+            # Validate no pieces in between for sliding moves
+            valid = True
+            if abs(q_r - i) > 1 or abs(q_c - j) > 1:  # Not adjacent
+                dr = 0 if q_r == i else (i - q_r) // abs(i - q_r)
+                dc = 0 if q_c == j else (j - q_c) // abs(j - q_c)
+                r, c = q_r + dr, q_c + dc
+                while (r, c) != (i, j):
+                    if board[r][c] is not None:
+                        valid = False
+                        break
+                    r, c = r + dr, c + dc
+                    
+            if valid:
+                # Calculate how good this move is
+                new_q_dist = max(abs(i - ek_r), abs(j - ek_c))
+                score = 0
+                
+                # Prefer moves that:
+                # 1. Give check
+                # 2. Push enemy king toward edge
+                # 3. Keep queen at knight's distance from enemy king (2 squares)
+                if gives_check:
+                    score += 50
+                    
+                    # Extra points if the check forces the king toward the edge
+                    if edge_dist > 0:  # Not already on edge
+                        for escape_r, escape_c in [
+                            (ek_r+1, ek_c), (ek_r-1, ek_c), 
+                            (ek_r, ek_c+1), (ek_r, ek_c-1),
+                            (ek_r+1, ek_c+1), (ek_r+1, ek_c-1),
+                            (ek_r-1, ek_c+1), (ek_r-1, ek_c-1)
+                        ]:
+                            if 0 <= escape_r < 8 and 0 <= escape_c < 8:
+                                # Check if this escape square is under attack
+                                escape_edge_dist = min(escape_r, escape_c, 7-escape_r, 7-escape_c)
+                                if escape_edge_dist < edge_dist:
+                                    score += 20
+                else:
+                    # If not giving check, prioritize moves that:
+                    # 1. Keep the queen close to the enemy king (but not too close)
+                    # 2. Restrict enemy king's mobility
+                    if 2 <= new_q_dist <= 3:
+                        score += 30
+                    
+                    # Bonus for restricting king mobility by controlling nearby squares
+                    mobility_control = 0
+                    for dr, dc in [(0,1), (1,0), (0,-1), (-1,0), (1,1), (1,-1), (-1,1), (-1,-1)]:
+                        next_r, next_c = ek_r + dr, ek_c + dc
+                        if 0 <= next_r < 8 and 0 <= next_c < 8:
+                            # Check if queen attacks this square
+                            if (abs(i - next_r) == abs(j - next_c)) or i == next_r or j == next_c:
+                                mobility_control += 5
+                    
+                    score += mobility_control
+                
+                # Encourage our king to get closer to the enemy king
+                # but not too close if we're already near
+                if king_dist > 3:
+                    king_approach = 15 - king_dist  # Higher score for getting closer
+                    score += king_approach
+                else:
+                    # Maintain a distance of 2 for the optimal checkmate pattern
+                    if king_dist == 2:
+                        score += 15
+                
+                # Add this move with its score
+                queen_moves.append((score, q_r, q_c, i, j))
+        
+        if queen_moves:
+            # Pick the best move
+            queen_moves.sort(reverse=True)
+            _, qr, qc, i, j = queen_moves[0]
+            return qr, qc, i, j
+        
+        # If no good queen move was found, try to move king closer to enemy king
+        ai_king = board[ak_r][ak_c]
+        king_moves = []
+        for i, j in ai_king.get_move():
+            if board[i][j] is None:  # Empty square
+                new_king_dist = max(abs(i - ek_r), abs(j - ek_c))
+                
+                # Don't get too close to prevent stalemate
+                if new_king_dist >= 2:
+                    score = 10 - new_king_dist  # Higher score for getting closer
+                    king_moves.append((score, ak_r, ak_c, i, j))
+        
+        if king_moves:
+            king_moves.sort(reverse=True)
+            _, kr, kc, i, j = king_moves[0]
+            return kr, kc, i, j
+        
+        # Fallback to any legal queen move
+        return q_r, q_c, q_r, q_c
+
+
+    def evaluate_move_safety(self, r, c, i, j):
+        """
+        Evaluate if a move is safe by checking potential threats after the move
+        Returns: (is_safe, threat_value, num_attackers)
+        """
+        # Make the move
+        self.game.goto(r, c, i, j)
+        
+        # Check if the piece at destination will be under attack
+        piece_at_dest = self.game.board[i][j]
+        piece_value = abs(piece_at_dest.value)
+        
+        # Collect all attackers and defenders
+        attackers = []
+        defenders = []
+        
+        for r2 in range(8):
+            for c2 in range(8):
+                if self.game.board[r2][c2] is not None:
+                    # Check if this piece can attack our moved piece
+                    if self.game.board[r2][c2].player == -piece_at_dest.player:
+                        for ar, ac in self.game.board[r2][c2].get_move():
+                            if (ar, ac) == (i, j):
+                                attacker_value = abs(self.game.board[r2][c2].value)
+                                attackers.append((attacker_value, r2, c2))
+                    # Check if our pieces can defend the moved piece
+                    elif self.game.board[r2][c2].player == piece_at_dest.player and (r2, c2) != (i, j):
+                        for dr, dc in self.game.board[r2][c2].get_move():
+                            if (dr, dc) == (i, j):
+                                defender_value = abs(self.game.board[r2][c2].value)
+                                defenders.append((defender_value, r2, c2))
+        
+        # Undo the move
+        self.game.backto()
+        
+        # Calculate safety score
+        if not attackers:
+            return True, 0, 0  # No attackers, completely safe
+        
+        # Find the smallest attacker
+        attackers.sort()  # Sort by value (ascending)
+        smallest_attacker = attackers[0][0]
+        
+        # If a valuable piece is attacked by a less valuable piece, it's unsafe
+        if smallest_attacker < piece_value:
+            # But check if it can be recaptured favorably
+            if defenders:
+                # Basic exchange evaluation
+                defenders.sort()  # Sort by value (ascending)
+                if defenders[0][0] <= smallest_attacker:
+                    # We can recapture with an equal or less valuable piece
+                    return True, smallest_attacker, len(attackers)
+            return False, smallest_attacker, len(attackers)
+        
+        # If attacking piece is more valuable, might still be safe
+        return True, smallest_attacker, len(attackers)
     def get_best_move(self, use_iterative_deepening=True):
         """Get the best move using iterative deepening within time constraints"""
         # Add logging - BOARD STATE AND CONTEXT
@@ -853,7 +1075,37 @@ class ChessAI:
             print("Using specialized endgame strategy")
             valid_moves = self.game.game_adaptee.get_valid_moves()
             
-            # Track position history to avoid repetition
+            # NEW CODE: Check for King+Queen vs King endgame
+            ai_pieces = {'king': 0, 'queen': 0, 'rook': 0, 'bishop': 0, 'knight': 0, 'pawn': 0}
+            enemy_pieces_dict = {'king': 0, 'queen': 0, 'rook': 0, 'bishop': 0, 'knight': 0, 'pawn': 0}
+            
+            for r in range(8):
+                for c in range(8):
+                    piece = self.game.board[r][c]
+                    if piece is not None:
+                        piece_type = {'p': 'pawn', 'n': 'knight', 'b': 'bishop', 
+                                    'r': 'rook', 'q': 'queen', 'k': 'king'}[piece.name[1]]
+                        piece_dict = ai_pieces if piece.player == self.player else enemy_pieces_dict
+                        piece_dict[piece_type] += 1
+            
+            # King + Queen vs King endgame
+            if (ai_pieces['king'] == 1 and ai_pieces['queen'] == 1 and 
+                sum(ai_pieces.values()) == 2 and
+                enemy_pieces_dict['king'] == 1 and sum(enemy_pieces_dict.values()) == 1):
+                
+                print("Detected K+Q vs K endgame - using specialized algorithm")
+                best_move = self.specialized_kq_endgame(self.game.board)
+                
+                if best_move:
+                    qr, qc, i, j = best_move
+                    for move in valid_moves:
+                        if (qr == move.start_row and qc == move.start_col and 
+                            i == move.end_row and j == move.end_col):
+                            print(f"Selected K+Q vs K optimal move: {move.piece_moved} from {chr(97+qc)}{8-qr} to {chr(97+j)}{8-i}")
+                            print("=== AI MOVE SELECTION END ===\n")
+                            return move
+            
+            # EXISTING CODE - Track position history to avoid repetition
             current_position = self.game.game_adaptee.get_position_key()
             recent_positions = list(self.game.game_adaptee.position_history.keys())[-10:] if self.game.game_adaptee.position_history else []
             
@@ -980,16 +1232,33 @@ class ChessAI:
                         # Prioritize queen moves that get closer to the enemy king
                         distance = max(abs(move.end_row - enemy_king_pos[0]), 
                                       abs(move.end_col - enemy_king_pos[1]))
-                        if distance == 2:  # Knight's move away - ideal distance
-                            king_restriction_moves.append((1, move))
+                        if 2 <= distance <= 3:  # Slightly safer distance from enemy king
+                            # Higher priority for positions that control more squares
+                            priority = 1
+                            # Don't place queen where it can be captured
+                            self.game.goto(move.start_row, move.start_col, move.end_row, move.end_col)
+                            is_threatened = self.is_piece_threatened(move.end_row, move.end_col, self.game.board[move.end_row][move.end_col])
+                            self.game.backto()
+                            
+                            if not is_threatened[0]:  # Only if the queen won't be captured
+                                king_restriction_moves.append((priority, move))
                     elif move.piece_moved[1] == 'k':
                         # Move our king toward enemy king in endgame
                         curr_distance = max(abs(move.start_row - enemy_king_pos[0]), 
-                                           abs(move.start_col - enemy_king_pos[1]))
+                        abs(move.start_col - enemy_king_pos[1]))
                         new_distance = max(abs(move.end_row - enemy_king_pos[0]), 
-                                          abs(move.end_col - enemy_king_pos[1]))
-                        if new_distance < curr_distance:
-                            king_restriction_moves.append((2, move))
+                                        abs(move.end_col - enemy_king_pos[1]))
+                        
+                        # Don't get too close in middle game, optimal distance is 2 squares in endgame
+                        target_distance = 2 if len(enemy_pieces) <= 2 else 3
+                        
+                        # Check if the move is safe (not moving into check)
+                        self.game.goto(move.start_row, move.start_col, move.end_row, move.end_col)
+                        is_safe = not self.is_check(self.player)  # Make sure we're not moving into check
+                        self.game.backto()
+                        
+                        if new_distance <= target_distance and new_distance < curr_distance and is_safe:
+                            king_restriction_moves.append((2, move))  # Lower priority for king moves
             
             # Choose best strategy
             if promotion_moves:
@@ -1008,33 +1277,45 @@ class ChessAI:
         # FALLBACK: If no move was found, choose any valid move
         valid_moves = self.game.game_adaptee.get_valid_moves()
         
-        # First check for high-value captures
+       
         capture_moves = [m for m in valid_moves if m.piece_captured != '--']
         if capture_moves:
             print("Using fallback capture move selection:")
-            # Sort by value of captured piece
-            queen_captures = [m for m in capture_moves if m.piece_captured[1] == 'q']
-            if queen_captures:
-                print(f"Selected queen capture: {queen_captures[0].piece_moved} {chr(97+queen_captures[0].start_col)}{8-queen_captures[0].start_row}->{chr(97+queen_captures[0].end_col)}{8-queen_captures[0].end_row}")
-                print("=== AI MOVE SELECTION END ===\n")
-                return queen_captures[0]  # Return first move that captures queen
+            # Calculate the value difference for each capture
+            piece_values = {'p': 100, 'n': 320, 'b': 330, 'r': 500, 'q': 900, 'k': 20000}
+            
+            # Calculate whether captures are favorable
+            for m in capture_moves:
+                attacker_value = piece_values.get(m.piece_moved[1], 0)
+                target_value = piece_values.get(m.piece_captured[1], 0)
                 
-            rook_captures = [m for m in capture_moves if m.piece_captured[1] == 'r']
-            if rook_captures:
-                print(f"Selected rook capture: {rook_captures[0].piece_moved} {chr(97+rook_captures[0].start_col)}{8-rook_captures[0].start_row}->{chr(97+rook_captures[0].end_col)}{8-rook_captures[0].end_row}")
-                print("=== AI MOVE SELECTION END ===\n")
-                return rook_captures[0]  # Return first move that captures rook
+                # Evaluate safety AFTER the capture
+                is_safe, threat_value, num_attackers = self.evaluate_move_safety(
+                    m.start_row, m.start_col, m.end_row, m.end_col)
                 
-            minor_captures = [m for m in capture_moves if m.piece_captured[1] in ['b', 'n']]
-            if minor_captures:
-                print(f"Selected minor piece capture: {minor_captures[0].piece_moved} {chr(97+minor_captures[0].start_col)}{8-minor_captures[0].start_row}->{chr(97+minor_captures[0].end_col)}{8-minor_captures[0].end_row}")
-                print("=== AI MOVE SELECTION END ===\n")
-                return minor_captures[0]  # Return first move that captures bishop/knight
-                
-            # Any capture is better than no capture
-            print(f"Selected any capture: {capture_moves[0].piece_moved} {chr(97+capture_moves[0].start_col)}{8-capture_moves[0].start_row}->{chr(97+capture_moves[0].end_col)}{8-capture_moves[0].end_row}")
-            print("=== AI MOVE SELECTION END ===\n")
-            return capture_moves[0]
+                if is_safe:
+                    # Safe capture - full value
+                    m.value_difference = target_value
+                else:
+                    # Unsafe capture - consider the exchange
+                    m.value_difference = target_value - attacker_value
+                    
+                    # Heavy penalty for putting valuable pieces at risk
+                    if attacker_value > 300:  # Knight/Bishop or higher
+                        m.value_difference -= 200
+                    
+                    # Extra penalty for multiple attackers
+                    m.value_difference -= 50 * (num_attackers - 1)
+            
+            # Sort by value difference (highest first)
+            capture_moves.sort(key=lambda m: m.value_difference, reverse=True)
+            
+            # Only consider favorable trades
+            good_captures = [m for m in capture_moves if m.value_difference > 0]
+            if good_captures:
+                selected_move = good_captures[0]
+                print(f"Selected favorable capture: {selected_move.piece_moved} captures {selected_move.piece_captured}")
+                return selected_move
             
         # If no captures, prioritize different move types and use randomization
         if valid_moves:
@@ -1046,7 +1327,15 @@ class ChessAI:
                               ((m.piece_moved[0] == 'w' and m.start_row == 7) or 
                                (m.piece_moved[0] == 'b' and m.start_row == 0))]
             center_control_moves = [m for m in valid_moves if m.end_row in [3, 4] and m.end_col in [3, 4]]
-            
+            for move in center_control_moves:
+                is_safe, _, _ = self.evaluate_move_safety(
+                    move.start_row, move.start_col, move.end_row, move.end_col)
+                move.is_safe = is_safe
+
+            # Filter to only safe center control moves if possible
+            safe_center_moves = [m for m in center_control_moves if m.is_safe]
+            if safe_center_moves:
+                center_control_moves = safe_center_moves
             # Filter out the repetitive rook moves
             rook_back_forth = [m for m in valid_moves if 
                              m.piece_moved[1] == 'r' and 

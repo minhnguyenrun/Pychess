@@ -64,6 +64,7 @@ def print_board(board):
         print(f"|{8-r}")
     print(" +-----------------+")
     print("  a b c d e f g h")
+    
 def play_game(mode, ai_depth, visualizer, player_wants_black=False):
     game = GameState(player_wants_black=player_wants_black)
     selected_piece = None
