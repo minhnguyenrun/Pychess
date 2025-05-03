@@ -21,7 +21,31 @@ def random_move(game):
         print("No valid moves available!")
         print("=== RANDOM AGENT MOVE SELECTION END ===\n")
         return None
+    
+    # Check if the king is in check
+    if game.in_check:
+        print("KING IS IN CHECK - Prioritizing defensive moves")
+        # Filter moves that get out of check
+        check_escaping_moves = []
         
+        for move in moves:
+            # Try the move and see if it resolves check
+            game.make_move(move)
+            # After making the move, it's the other player's turn, so we need to switch perspective
+            is_still_in_check = game.in_check  
+            # Undo the move to restore the game state
+            game.undo_move()
+            
+            if not is_still_in_check:
+                check_escaping_moves.append(move)
+        
+        # If we found moves that escape check, use only those
+        if check_escaping_moves:
+            print(f"Found {len(check_escaping_moves)} moves that escape check")
+            moves = check_escaping_moves
+        else:
+            print("WARNING: No moves escape check - this shouldn't happen!")
+    
     # Log available capture moves
     capture_moves = [m for m in moves if m.piece_captured != '--']
     if capture_moves:
@@ -43,7 +67,6 @@ def random_move(game):
     print("=== RANDOM AGENT MOVE SELECTION END ===\n")
     
     return selected_move
-
 # Helper function to print the board
 def print_board(board):
     """Print a text representation of the board for debugging"""

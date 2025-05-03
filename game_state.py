@@ -47,12 +47,10 @@ class GameState:
             self.black_king_location = (move.end_row, move.end_col)
 
         # Check if a king was captured
-        if move.piece_captured == 'wk':
-            self.white_king_location = None  # King is captured
-            self.checkmate = True
-        elif move.piece_captured == 'bk':
-            self.black_king_location = None  # King is captured
-            self.checkmate = True
+        if move.piece_captured == 'wk' or move.piece_captured == 'bk':
+            # This should never happen - log an error
+            print("ERROR: Attempted to capture a king, which is illegal")
+            return False
 
         if move.is_en_passant:
             self.board[move.start_row][move.end_col] = '--'
@@ -210,27 +208,28 @@ class GameState:
             # Sort moves by priority (captures first)
             prioritized_moves.sort(key=lambda x: x[0])
             moves = [m[1] for m in prioritized_moves]
-    
-        # Final check for checkmate or stalemate
         if self.in_check:
             if len(moves) == 0:
                 print(f"DEBUG: No moves found that resolve check - potential checkmate for {'White' if not self.white_to_move else 'Black'}")
+                print(f"CHECKMATE: {'Black' if self.white_to_move else 'White'} wins")
             else:
                 print(f"DEBUG: {len(moves)} moves found that resolve check")
-                for move in moves[:3]:  # Print first few moves only
-                    print(f"  - {move.piece_moved} from {move.start_row},{move.start_col} to {move.end_row},{move.end_col}")
-
-      
+                for move in moves[:5]:  # Print first few moves only
+                    print(f"  - {move.piece_moved} from {chr(97+move.start_col)}{8-move.start_row} to {chr(97+move.end_col)}{8-move.end_row}")
+        
         if len(moves) == 0:
             if self.in_check:
                 self.checkmate = True
-                print(f"CHECKMATE: {'Black' if self.white_to_move else 'White'} wins")
+                winner = "Black" if self.white_to_move else "White"
+                print(f"CHECKMATE: {winner} wins")
+                # Important: return empty moves list to prevent further play
+                return []
             else:
                 self.stalemate = True
                 print("STALEMATE")
-    
+        
         return moves
-
+        
     def check_for_pins_and_checks(self):
         pins, checks = [], []
         in_check = False
