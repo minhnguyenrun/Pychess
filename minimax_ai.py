@@ -1327,6 +1327,9 @@ class ChessAI:
                               ((m.piece_moved[0] == 'w' and m.start_row == 7) or 
                                (m.piece_moved[0] == 'b' and m.start_row == 0))]
             center_control_moves = [m for m in valid_moves if m.end_row in [3, 4] and m.end_col in [3, 4]]
+            pawn_moves = self.evaluate_and_filter_moves(pawn_moves)
+            developing_moves = self.evaluate_and_filter_moves(developing_moves)
+            center_control_moves = self.evaluate_and_filter_moves(center_control_moves)
             for move in center_control_moves:
                 is_safe, _, _ = self.evaluate_move_safety(
                     move.start_row, move.start_col, move.end_row, move.end_col)
@@ -1404,3 +1407,32 @@ class ChessAI:
         print("No valid moves found!")
         print("=== AI MOVE SELECTION END ===\n")
         return None
+
+    def evaluate_and_filter_moves(self, moves):
+        """Evaluate safety of moves and filter unsafe ones"""
+        safe_moves = []
+        unsafe_moves = []
+        
+        for move in moves:
+            is_safe, threat_value, num_attackers = self.evaluate_move_safety(
+                move.start_row, move.start_col, move.end_row, move.end_col)
+            
+            # Store safety information on the move
+            move.is_safe = is_safe
+            move.threat_value = threat_value
+            move.num_attackers = num_attackers
+            
+            # Consider piece value when determining if an "unsafe" move is actually worth it
+            piece_value = {'p': 100, 'n': 320, 'b': 330, 'r': 500, 'q': 900, 'k': 20000}[move.piece_moved[1]]
+            
+            # Consider a move safe if:
+            # 1. It's actually safe (no attackers)
+            # 2. The piece being risked is less valuable than what it's attacking
+            if is_safe or (move.piece_captured != '--' and 
+                           piece_value < PIECE_VALUES.get(move.piece_captured[1], 0)):
+                safe_moves.append(move)
+            else:
+                unsafe_moves.append(move)
+        
+        # Return safe moves if available, otherwise return all moves
+        return safe_moves if safe_moves else moves
