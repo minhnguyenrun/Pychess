@@ -125,22 +125,57 @@ class ChessVisualizer:
             buttons.append(rect)
         pygame.display.flip()
         return buttons
+   
+    def draw_color_menu(self, title="Choose Your Color"): # Add optional title argument with default
+        """Draws the color selection menu (White/Black) and returns button rects."""
+        self.screen.fill(pygame.Color("black")) # Or your preferred background
 
-    def draw_color_menu(self):
-        self.screen.fill((240, 240, 240))
-        options = ["White", "Black"]
-        buttons = []
-        my_button_colors = [(224, 224, 244), (64, 64, 64)]
-        for i, option in enumerate(options):
-            text = self.font.render(option, True, (0, 0, 0))
-            rect = pygame.Rect(self.WIDTH // 2 - 150, 200 + i * 100, 300, 80)
-            pygame.draw.rect(self.screen, my_button_colors[i], rect)
-            text_rect = text.get_rect(center=rect.center)
-            self.screen.blit(text, text_rect)
-            buttons.append(rect)
-        pygame.display.flip()
-        return buttons
-    
+        # --- Draw Title ---
+        font = pygame.font.SysFont("Helvetic", 50, True, False)
+        text_object = font.render(title, True, pygame.Color('White'))
+        # Use self.WIDTH and self.HEIGHT instead of self.WINDOW_WIDTH/HEIGHT
+        text_rect = text_object.get_rect(center=(self.WIDTH // 2, self.HEIGHT // 4))
+        self.screen.blit(text_object, text_rect)
+
+        # --- Draw Buttons ---
+        button_font = pygame.font.SysFont("Helvetic", 40, True, False)
+        button_width = 200
+        button_height = 80
+        spacing = 50
+        # Use self.HEIGHT instead of self.WINDOW_HEIGHT
+        start_y = self.HEIGHT // 2
+
+        # White Button
+        white_button_rect = pygame.Rect(
+            # Use self.WIDTH instead of self.WINDOW_WIDTH
+            (self.WIDTH // 2) - button_width - (spacing // 2),
+            start_y,
+            button_width,
+            button_height
+        )
+        pygame.draw.rect(self.screen, pygame.Color('gray'), white_button_rect)
+        white_text = button_font.render("White", True, pygame.Color('black'))
+        white_text_rect = white_text.get_rect(center=white_button_rect.center)
+        self.screen.blit(white_text, white_text_rect)
+
+        # Black Button
+        black_button_rect = pygame.Rect(
+            # Use self.WIDTH instead of self.WINDOW_WIDTH
+            (self.WIDTH // 2) + (spacing // 2),
+            start_y,
+            button_width,
+            button_height
+        )
+        pygame.draw.rect(self.screen, pygame.Color('dark gray'), black_button_rect) # Slightly different color maybe
+        black_text = button_font.render("Black", True, pygame.Color('white'))
+        black_text_rect = black_text.get_rect(center=black_button_rect.center)
+        self.screen.blit(black_text, black_text_rect)
+
+        pygame.display.flip() # Update the display to show the menu
+
+        return [white_button_rect, black_button_rect] # Return the rects for collision detection
+
+
     def draw_option_menu(self):
         self.screen.fill((240, 240, 240))
         options = ["Easy", "Medium", "Hard"]
