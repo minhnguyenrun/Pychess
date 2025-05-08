@@ -35,7 +35,7 @@ class ChessVisualizer:
         self.colors = [(245, 245, 220), (139, 69, 19)]
         self.highlight_color = (255, 255, 0, 100)
         self.check_color = (255, 0, 0)
-        self.panel_bg_color = (220, 220, 220)  # Light grey for panel
+        self.panel_bg_color = (220, 220, 220) 
         self.button_colors = [(100, 200, 100), (200, 100, 100), (100, 100, 200), (255, 215, 0)]  # Green, Red, Blue
         self.font = pygame.font.SysFont("Arial", 24)
         self.small_piece_images = {k: pygame.transform.scale(v, (30, 30)) for k, v in self.piece_images.items()}
@@ -44,19 +44,17 @@ class ChessVisualizer:
 
 
     def draw_board(self, game, selected_piece=None, valid_moves=[], animating_piece=None):
-        # Draw chessboard
+
         for r in range(8):
             for c in range(8):
                 color = self.colors[(r + c) % 2]
                 pygame.draw.rect(self.screen, color, (c * self.SQUARE_SIZE, r * self.SQUARE_SIZE, self.SQUARE_SIZE, self.SQUARE_SIZE))
 
-        # Highlight king in checkmate (losing side)
         if game.checkmate:
             king_loc = game.white_king_location if not game.white_to_move else game.black_king_location
             if king_loc:
                 pygame.draw.rect(self.screen, self.check_color, (king_loc[1] * self.SQUARE_SIZE, king_loc[0] * self.SQUARE_SIZE, self.SQUARE_SIZE, self.SQUARE_SIZE), 4)
 
-        # Highlight selected piece and valid moves
         if selected_piece:
             r, c = selected_piece
             pygame.draw.rect(self.screen, self.highlight_color, (c * self.SQUARE_SIZE, r * self.SQUARE_SIZE, self.SQUARE_SIZE, self.SQUARE_SIZE), 4)
@@ -66,26 +64,21 @@ class ChessVisualizer:
                                     (move.end_col * self.SQUARE_SIZE + self.SQUARE_SIZE // 2, 
                                         move.end_row * self.SQUARE_SIZE + self.SQUARE_SIZE // 2), 10)
 
-        # Draw all pieces except the animating one
         for r in range(8):
             for c in range(8):
                 piece = game.board[r][c]
                 if piece != "--" and piece in self.piece_images:
-                    # Skip drawing the animating piece at its final position until animation completes
                     if not animating_piece or (r, c) != (animating_piece[1][1] // self.SQUARE_SIZE, animating_piece[1][0] // self.SQUARE_SIZE):
                         self.screen.blit(self.piece_images[piece], (c * self.SQUARE_SIZE, r * self.SQUARE_SIZE))
 
-        # Draw animating piece if present
         if animating_piece:
             start_pos, end_pos, piece, progress = animating_piece
             x = start_pos[0] + (end_pos[0] - start_pos[0]) * progress
             y = start_pos[1] + (end_pos[1] - start_pos[1]) * progress
             self.screen.blit(self.piece_images[piece], (x, y))
 
-        # Draw panel
         pygame.draw.rect(self.screen, self.panel_bg_color, (self.BOARD_WIDTH, 0, self.PANEL_WIDTH, self.HEIGHT))
         
-        # Move history with scrolling
         white_moves = [m.get_notation() for m in game.move_log if m.piece_moved[0] == 'w']
         black_moves = [m.get_notation() for m in game.move_log if m.piece_moved[0] == 'b']
         self.screen.blit(self.font.render("Move History", True, (0, 0, 0)), (self.BOARD_WIDTH + 10, 10))
@@ -99,7 +92,7 @@ class ChessVisualizer:
                 self.screen.blit(self.font.render(f"{idx+1}. {w} {b}", True, (0, 0, 0)), 
                                 (self.BOARD_WIDTH + 10, 40 + i * 25))
 
-        # Captured pieces (fixed position below move list)
+       
         captured_white = [m.piece_captured for m in game.move_log if m.piece_captured[0] == 'w' and m.piece_captured != '--']
         captured_black = [m.piece_captured for m in game.move_log if m.piece_captured[0] == 'b' and m.piece_captured != '--']
         self.screen.blit(self.font.render("Captured White", True, (0, 0, 0)), (self.BOARD_WIDTH + 10, 300))
@@ -126,28 +119,21 @@ class ChessVisualizer:
         pygame.display.flip()
         return buttons
    
-    def draw_color_menu(self, title="Choose Your Color"): # Add optional title argument with default
-        """Draws the color selection menu (White/Black) and returns button rects."""
-        self.screen.fill(pygame.Color("black")) # Or your preferred background
+    def draw_color_menu(self, title="Choose Your Color"): 
+        self.screen.fill(pygame.Color("black")) 
 
-        # --- Draw Title ---
         font = pygame.font.SysFont("Helvetic", 50, True, False)
         text_object = font.render(title, True, pygame.Color('White'))
-        # Use self.WIDTH and self.HEIGHT instead of self.WINDOW_WIDTH/HEIGHT
         text_rect = text_object.get_rect(center=(self.WIDTH // 2, self.HEIGHT // 4))
         self.screen.blit(text_object, text_rect)
 
-        # --- Draw Buttons ---
         button_font = pygame.font.SysFont("Helvetic", 40, True, False)
         button_width = 200
         button_height = 80
         spacing = 50
-        # Use self.HEIGHT instead of self.WINDOW_HEIGHT
         start_y = self.HEIGHT // 2
 
-        # White Button
         white_button_rect = pygame.Rect(
-            # Use self.WIDTH instead of self.WINDOW_WIDTH
             (self.WIDTH // 2) - button_width - (spacing // 2),
             start_y,
             button_width,
@@ -158,9 +144,7 @@ class ChessVisualizer:
         white_text_rect = white_text.get_rect(center=white_button_rect.center)
         self.screen.blit(white_text, white_text_rect)
 
-        # Black Button
         black_button_rect = pygame.Rect(
-            # Use self.WIDTH instead of self.WINDOW_WIDTH
             (self.WIDTH // 2) + (spacing // 2),
             start_y,
             button_width,
@@ -189,6 +173,49 @@ class ChessVisualizer:
             buttons.append(rect)
         pygame.display.flip()
         return buttons
+    
+    
+    def draw_promotion_menu(self, color, position):
+        
+        promotion_pieces = ['q', 'r', 'b', 'n']
+        piece_codes = [color + p for p in promotion_pieces]
+        buttons = {}
+        menu_width = self.SQUARE_SIZE
+        menu_height = self.SQUARE_SIZE * len(piece_codes)
+
+        menu_x = position[0]
+        menu_y = position[1]
+
+        
+        if menu_y < menu_height / 2:
+            menu_y = 0 
+        elif menu_y > self.HEIGHT - menu_height / 2: 
+            menu_y = self.HEIGHT - menu_height 
+        else: 
+                menu_y = menu_y - menu_height // 2
+
+        if menu_x < 0: menu_x = 0
+        if menu_x + menu_width > self.BOARD_WIDTH: menu_x = self.BOARD_WIDTH - menu_width
+
+        menu_rect = pygame.Rect(menu_x, menu_y, menu_width, menu_height)
+
+        bg_surface = pygame.Surface((menu_width, menu_height), pygame.SRCALPHA)
+        bg_surface.fill((100, 100, 100, 200)) 
+        self.screen.blit(bg_surface, (menu_x, menu_y))
+        pygame.draw.rect(self.screen, (255, 255, 255), menu_rect, 2) 
+
+        for i, piece_code in enumerate(piece_codes):
+            piece_type = piece_code[1]
+            image = self.piece_images.get(piece_code)
+            if image:
+                button_rect = pygame.Rect(menu_x, menu_y + i * self.SQUARE_SIZE, self.SQUARE_SIZE, self.SQUARE_SIZE)
+                self.screen.blit(image, button_rect.topleft)
+                buttons[piece_type] = button_rect
+            else:
+                print(f"Warning: Image not found for promotion piece {piece_code}")
+
+        return buttons
+  
     
     def draw_endgame_message(self, result):
         message = "White Wins!" if result == 'white' else "Black Wins!" if result == 'black' else "Draw!"
