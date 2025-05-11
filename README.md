@@ -20,7 +20,7 @@
 1.  **Clone Repository:**
     ```bash
     git clone https://github.com/minhnguyenrun/Pychess
-    cd your-chess-repo
+    cd Pychess
     ```
 2.  **Cài đặt thư viện:** (Nên sử dụng môi trường ảo - virtual environment)
     ```bash
